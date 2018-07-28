@@ -526,7 +526,6 @@ process bedtools {
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools
     file(bam_indices) from sorted_bam_indices
-    file(chrom_sizes) from chrom_sizes
 
     output:
     set val(name), file("${name}.rpkm.bedGraph") into normalized_bed_ch
@@ -599,7 +598,7 @@ process igvtools {
 
     input:
     set val(name), file(normalized_bed) from normalized_bed_ch
-    file(genome)
+    file(chrom_sizes) from chrom_sizes
 
     output:
     set val(name), file("${name}.rpkm.tdf") into tiled_data_ch
@@ -608,7 +607,7 @@ process igvtools {
     """
     module load igvtools/2.3.75
 
-    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bed} ${name}.rpkm.tdf ${genome}
+    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bed} ${name}.rpkm.tdf ${chrom_sizes}
     """
  }
 
