@@ -10,6 +10,3 @@ $email_html
 
 --nfmimeboundary--
 
-uuencode ${attach1} ${attach1}
-uuencode ${attach2} ${attach2}
-uuencode ${attach3} ${attach3}
