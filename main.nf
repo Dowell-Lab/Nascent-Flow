@@ -1,18 +1,14 @@
 #!/usr/bin/env nextflow
 /*
 ========================================================================================
-                         NCBI-Hackathons/ATACFlow
+                         GROFlow - Nascent Transcription PIPELINE
 ========================================================================================
- NCBI-Hackathons/ATACFlow Analysis Pipeline. Started 2018-06-21.
+ Nascent Transcription Analysis Pipeline. Started 2018-06-21.
  #### Homepage / Documentation
- https://github.com/NCBI-Hackathons/ATACFlow
+ https://biof-git.colorado.edu/dowelllab/GRO-seq-workflow
  #### Authors
- ATACFlow Team @ RMGCH-18 NCBI-Hackathons - https://github.com/NCBI-Hackathons>
  Ignacio Tripodi <ignacio.tripodi@colorado.edu>
- Steve Tsang <stevehtsang@gmail.com>
- Jingjing Zhao <jjzhao123@gmail.com>
- Evan Floden <evanfloden@gmail.com>
- Chi Zhang <chzh1418@colorado.edu>
+ Margaret Gruca <magr0763@colorado.edu>
 ----------------------------------------------------------------------------------------
 */
 
@@ -20,28 +16,14 @@
 def helpMessage() {
     log.info"""
     =========================================
-     NCBI-Hackathons/ATACFlow v${params.version}
+     GROFlow v${params.version}
     =========================================
     Usage:
 
     The typical command for running the pipeline is as follows:
 
-    nextflow run NCBI-Hackathons/ATACFlow -profile singularity,test
+    nextflow run main.nf -profile fiji
 
-    Mandatory arguments:
-      --reads                       Path to input data (must be surrounded with quotes)
-      --sras                        Comma seperated list of SRAs ids
-      --genome                      Name of iGenomes reference
-      --bt2index                    Path to Bowtie2 index
-      -profile                      Hardware config to use. docker / aws
-
-    Options:
-      --singleEnd                   Specifies that the input is single end reads
-
-    Other options:
-      --outdir                      The output directory where the results will be saved
-      --email                       Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits
-      -name                         Name for the pipeline run. If not specified, Nextflow will automatically generate a random mnemonic.
     """.stripIndent()
 }
 
@@ -168,10 +150,10 @@ log.info """=======================================================
     | \\| |       \\__, \\__/ |  \\ |___     \\`-._,-`-,
                                           `._,._,\'
 
-NCBI-Hackathons/ATACFlow v${params.version}"
+GROFlow v${params.version}"
 ======================================================="""
 def summary = [:]
-summary['Pipeline Name']    = 'NCBI-Hackathons/ATACFlow'
+summary['Pipeline Name']    = 'GROFlow'
 summary['Pipeline Version'] = params.version
 summary['Run Name']         = custom_runName ?: workflow.runName
 summary['Reads']            = params.reads
@@ -686,9 +668,9 @@ process multiqc {
 workflow.onComplete {
 
     // Set up the e-mail variables
-    def subject = "[NCBI-Hackathons/ATACFlow] Successful: $workflow.runName"
+    def subject = "[GROFlow] Successful: $workflow.runName"
     if(!workflow.success){
-      subject = "[NCBI-Hackathons/ATACFlow] FAILED: $workflow.runName"
+      subject = "[GROFlow] FAILED: $workflow.runName"
     }
     def email_fields = [:]
     email_fields['version'] = params.version
@@ -725,7 +707,7 @@ workflow.onComplete {
     def email_html = html_template.toString()
 
     // Render the sendmail template
-    def smail_fields = [ email: params.email, subject: subject, email_txt: email_txt, email_html: email_html, baseDir: "$baseDir", attach1: "$baseDir/results/Documentation/pipeline_report.html", attach2: "$baseDir/results/pipeline_info/NCBI-Hackathons/ATACFlow_report.html", attach3: "$baseDir/results/pipeline_info/NCBI-Hackathons/ATACFlow_timeline.html" ]
+    def smail_fields = [ email: params.email, subject: subject, email_txt: email_txt, email_html: email_html, baseDir: "$baseDir" ]
     def sf = new File("$baseDir/assets/sendmail_template.txt")
     def sendmail_template = engine.createTemplate(sf).make(smail_fields)
     def sendmail_html = sendmail_template.toString()
@@ -736,11 +718,11 @@ workflow.onComplete {
           if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
           // Try to send HTML e-mail using sendmail
           [ 'sendmail', '-t' ].execute() << sendmail_html
-          log.info "[NCBI-Hackathons/ATACFlow] Sent summary e-mail to $params.email (sendmail)"
+          log.info "[GROFlow] Sent summary e-mail to $params.email (sendmail)"
         } catch (all) {
           // Catch failures and try with plaintext
           [ 'mail', '-s', subject, params.email ].execute() << email_txt
-          log.info "[NCBI-Hackathons/ATACFlow] Sent summary e-mail to $params.email (mail)"
+          log.info "[GROFlow] Sent summary e-mail to $params.email (mail)"
         }
     }
 
@@ -754,6 +736,6 @@ workflow.onComplete {
     def output_tf = new File( output_d, "pipeline_report.txt" )
     output_tf.withWriter { w -> w << email_txt }
 
-    log.info "[NCBI-Hackathons/ATACFlow] Pipeline Complete"
+    log.info "[GROFlow] Pipeline Complete"
 
 }
