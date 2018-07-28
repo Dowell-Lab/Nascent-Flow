@@ -101,7 +101,7 @@ if ( params.genome_refseq ){
 }
 
 if ( params.effective_genome_size ){
-    effective_genome_size = file("${params.effective_genome_size}")
+    effective_genome_size = "${params.effective_genome_size}"
 }
 
 if ( params.sras ){
@@ -217,38 +217,44 @@ process get_software_versions {
     validExitStatus 0,1
 
     output:
-//    file 'software_versions_mqc.yaml' into software_versions_yaml
-    file 'all_versions' into software_versions_yaml
+    file 'software_versions_mqc.yaml' into software_versions_yaml
 
     script:
     """
+    module load python/2.7.14
     module load fastx-toolkit/0.0.13
     module load fastqc/0.11.5
     module load bbmap/38.05
     module load samtools/1.8
     module load hisat2/2.1.0
     module load preseq/2.0.3
-    module load python/2.7.14/rseqc
     module load bedtools/2.25.0
     module load igvtools/2.3.75
+    module load sra/2.8.0
 
     echo $params.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
-    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement -h | grep Toolkit > v_fastx_reverse_complement.txt || true
+    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement -h > v_fastx_reverse_complement.txt || true
     fastqc --version > v_fastqc.txt
+    multiqc --version > v_multiqc.txt || true
     bbduk.sh --version > v_bbduk.txt || true
-    hisat2 --version | grep hisat2 > v_hisat2.txt
-    samtools --version | grep samtools > v_samtools.txt
+    hisat2 --version > v_hisat2.txt
+    samtools --version > v_samtools.txt
+    fastq-dump --version > v_fastq-dump.txt
     #preseq --version > v_preseq.txt
     echo "2.0.3" > v_preseq.txt
-    read_distribution.py --version > v_rseqc.txt
-    bedtools --version > v_bedtools.txt
-    /opt/igvtools/2.3.75/igvtools version | grep Version > v_igvtools.txt
 
-    for X in `ls *.txt`; do
-        cat \$X >> all_versions;
-    done
-#    scrape_software_versions.py > software_versions_mqc.yaml
+    # Can't call this before running MultiQC or it breaks it
+    module load python/2.7.14/rseqc
+    read_distribution.py --version > v_rseqc.txt
+
+    bedtools --version > v_bedtools.txt
+    /opt/igvtools/2.3.75/igvtools version > v_igv-tools.txt
+
+#    for X in `ls *.txt`; do
+#        cat \$X >> all_versions;
+#    done
+    scrape_software_versions.py > software_versions_mqc.yaml
     """
 }
 
@@ -261,14 +267,15 @@ process sra_mapping {
     set val(name), file(reads) from read_files_sra
 
     output:
-    set val(name), file("*.fastq") into fastq_reads_for_reverse_complement
-    set val(name), file("*.fastq") into fastq_reads_for_qc
+    set val(name), file("${name}.fastq") into fastq_reads_for_reverse_complement
+    set val(name), file("${name}.fastq") into fastq_reads_for_qc
 
     script:
     // TEST THIS LATER, SHOULD BE FASTER AND DEFAULTS TO --split-3
     // fasterq-dump ${sra_id}
     """
     module load sra/2.8.0
+    echo ${name}
 
     fastq-dump ${reads}
     """
@@ -296,6 +303,7 @@ process reverse_complement {
     script:
     """
     module load fastx-toolkit/0.0.13
+    echo ${name}
 
     /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement \
         -Q33 \
@@ -323,6 +331,7 @@ process fastqc {
     script:
     """
     module load fastqc/0.11.5
+    echo ${name}
 
     fastqc $reads
     """
@@ -344,11 +353,13 @@ process bbduk {
     set val(name), file(flipped_reads) from flipped_reads_ch
 
     output:
-    set val(name), file "*.trim.fastq" into trimmed_reads_for_fastqc
+    file "${name}.trim.fastq" into trimmed_reads_for_fastqc
+    file "${name}.trim.fastq" into trimmed_reads_for_hisat2
 
     script:
     """
     module load bbmap/38.05
+    echo ${name}
 
     bbduk.sh -Xmx20g \
               t=16 \
@@ -373,19 +384,21 @@ process bbduk {
  */
 
 process fastqc_trimmed {
-    tag "$name"
+    tag "$prefix"
     publishDir "${params.outdir}/fastqc", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
-    set val(name), file(trimmed_reads) from trimmed_reads_for_fastqc
+    file(trimmed_reads) from trimmed_reads_for_fastqc
 
     output:
     file "*_fastqc.{zip,html}" into trimmed_fastqc_results
 
     script:
+    prefix = trimmed_reads.baseName
     """
     module load fastqc/0.11.5
+    echo ${prefix}
 
     fastqc $trimmed_reads
     """
@@ -396,30 +409,38 @@ process fastqc_trimmed {
  * STEP 4 - Map reads to reference genome
  */
 process hisat2 {
-    tag "$name"
+    // NOTE: this is poorly written and sends output there even in
+    // successful (exit code 0) termination, so we have to ignore errors for
+    // now, and the next process will blow up from missing a SAM file instead.
+    errorStrategy 'ignore'
+
+    tag "$prefix"
     cpus 32
-    publishDir "${params.outdir}/hisat2/", mode: 'copy', pattern: "${name}.trim.sam"
+    publishDir "${params.outdir}/hisat2/", mode: 'copy', pattern: "${prefix}.trim.sam"
 // TODO: Copy this .sam.wc file as well
 
     input:
     file(indices) from hisat2_indices
-    set val(name), file(trimmed_reads) from trimmed_reads_for_hisat2
+    val(indices_path) from hisat2_indices
+    file(trimmed_reads) from trimmed_reads_for_hisat2
 
     output:
-    set val(name), file("${name}.trim.sam") into mapped_sam_file_ch
+    set val(prefix), file("${prefix}.sam") into mapped_sam_file_ch
 
     script:
+    prefix = trimmed_reads.baseName
     """
     module load hisat2/2.1.0
+    echo ${prefix}
 
     hisat2  -p 32 \
             --very-sensitive \
             --no-spliced-alignment \
-            -x ${indices}\
+            -x ${indices_path}\
             -U ${trimmed_reads} \
-            > ${name}.trim.sam
+            > ${prefix}.sam
 
-    wc -l ${name}.trim.sam > ${name}.trim.sam.wc
+    wc -l ${prefix}.sam > ${prefix}.sam.wc
     """
 }
 
@@ -440,17 +461,18 @@ process samtools {
 
     output:
     set val(name), file("${name}.sorted.bam") into sorted_bam_ch
+    file("${name}.sorted.bam.bai") into sorted_bam_indices
     set val(name), file("${name}.sorted.bam.flagstat") into flagstat_ch
 
     script:
     """
     module load samtools/1.8
 
-    samtools view -S -b -o ${name}.trim.bam ${mapped_sam}
-    samtools flagstat ${name}.trim.bam > ${name}.trim.bam.flagstat
-    samtools sort -m100G ${name}.trim.bam > ${name}.trim.sorted.bam
-    samtools flagstat ${name}.trim.sorted.bam > ${name}.trim.sorted.bam.flagstat
-    samtools index ${name}.trim.sorted.bam ${name}.trim.sorted.bam.bai
+    samtools view -S -b -o ${name}.bam ${mapped_sam}
+    samtools flagstat ${name}.bam > ${name}.bam.flagstat
+    samtools sort -m100G ${name}.bam > ${name}.sorted.bam
+    samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
+    samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
     """
 }
 
@@ -517,58 +539,64 @@ process rseqc {
 process bedtools {
     tag "$name"
     cpus 16
-    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "${name}.trim.rpkm.b*"
+    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "${name}.rpkm.b*"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools
+    file(bam_indices) from sorted_bam_indices
     file(chrom_sizes) from chrom_sizes
 
     output:
-    set val(name), file("${name}.trim.rpkm.bedGraph") into normalized_bed_ch
+    set val(name), file("${name}.rpkm.bedGraph") into normalized_bed_ch
 
     script:
     """
     module load bedtools/2.25.0
+    module load singularity/2.4
 
+    singularity exec ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
                 --filterRNAstrand forward \
                 --normalizeUsing RPKM \
                 --effectiveGenomeSize ${effective_genome_size} \
                 -of bigwig \
-                -o ${name}.pos.trim.rpkm.bw
+                -o ${name}.pos.rpkm.bw
 
+    singularity exec ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
                 --filterRNAstrand reverse \
                 --normalizeUsing RPKM \
                 --effectiveGenomeSize ${effective_genome_size} \
                 -of bigwig \
-                -o ${name}.neg.trim.rpkm.bw
+                -o ${name}.neg.rpkm.bw
 
+    singularity exec ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
                 --filterRNAstrand forward \
                 --normalizeUsing RPKM \
                 --effectiveGenomeSize ${effective_genome_size} \
                 -of bedgraph \
-                -o ${name}.pos.trim.rpkm.bedGraph
+                -o ${name}.pos.rpkm.bedGraph
 
+    singularity exec ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
                 --filterRNAstrand reverse \
                 --normalizeUsing RPKM \
                 --effectiveGenomeSize ${effective_genome_size} \
                 -of bedgraph \
-                -o ${name}.tmp.neg.trim.rpkm.bedGraph
+                -o ${name}.tmp.neg.rpkm.bedGraph
 
-    awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.trim.rpkm.bedGraph \
-        > ${name}.neg.trim.rpkm.bedGraph
-    rm ${name}.tmp.neg.trim.rpkm.bedGraph
+    awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.rpkm.bedGraph \
+        > ${name}.neg.rpkm.bedGraph
+    rm ${name}.tmp.neg.rpkm.bedGraph
 
-    cat ${name}.pos.trim.rpkm.bedGraph <(grep -v '^@' ${name}.neg.trim.rpkm.bedGraph) \
+    cat ${name}.pos.rpkm.bedGraph <(grep -v '^@' ${name}.neg.rpkm.bedGraph) \
         | sortBed \
-        > ${name}.trim.rpkm.bedGraph
+        > ${name}.rpkm.bedGraph
     """
  }
 
@@ -582,21 +610,23 @@ process bedtools {
 
 process igvtools {
     tag "$name"
+    // This often blows up due to a ceiling in memory usage, so we can ignore
+    // and re-run later as it's non-essential.
     errorStrategy 'ignore'
-    publishDir "${params.outdir}/igv_tools/", mode: 'copy', pattern: "${name}.trim.rpkm.tdf"
+    publishDir "${params.outdir}/igv_tools/", mode: 'copy', pattern: "${name}.rpkm.tdf"
 
     input:
     set val(name), file(normalized_bed) from normalized_bed_ch
     file(genome)
 
     output:
-    set val(name), file("${name}.trim.rpkm.tdf") into tiled_data_ch
+    set val(name), file("${name}.rpkm.tdf") into tiled_data_ch
 
     script:
     """
     module load igvtools/2.3.75
 
-    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bed} ${name}.trim.rpkm.tdf ${genome}
+    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bed} ${name}.rpkm.tdf ${genome}
     """
  }
 
@@ -620,6 +650,8 @@ process multiqc {
     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
     rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
     """
+    module load python/2.7.14
+
     multiqc -f $rtitle $rfilename --config $multiqc_config .
     """
 }
