@@ -1,0 +1,727 @@
+#!/usr/bin/env nextflow
+/*
+========================================================================================
+                         NCBI-Hackathons/ATACFlow
+========================================================================================
+ NCBI-Hackathons/ATACFlow Analysis Pipeline. Started 2018-06-21.
+ #### Homepage / Documentation
+ https://github.com/NCBI-Hackathons/ATACFlow
+ #### Authors
+ ATACFlow Team @ RMGCH-18 NCBI-Hackathons - https://github.com/NCBI-Hackathons>
+ Ignacio Tripodi <ignacio.tripodi@colorado.edu>
+ Steve Tsang <stevehtsang@gmail.com>
+ Jingjing Zhao <jjzhao123@gmail.com>
+ Evan Floden <evanfloden@gmail.com>
+ Chi Zhang <chzh1418@colorado.edu>
+----------------------------------------------------------------------------------------
+*/
+
+
+def helpMessage() {
+    log.info"""
+    =========================================
+     NCBI-Hackathons/ATACFlow v${params.version}
+    =========================================
+    Usage:
+
+    The typical command for running the pipeline is as follows:
+
+    nextflow run NCBI-Hackathons/ATACFlow -profile singularity,test
+
+    Mandatory arguments:
+      --reads                       Path to input data (must be surrounded with quotes)
+      --sras                        Comma seperated list of SRAs ids
+      --genome                      Name of iGenomes reference
+      --bt2index                    Path to Bowtie2 index
+      -profile                      Hardware config to use. docker / aws
+
+    Options:
+      --singleEnd                   Specifies that the input is single end reads
+
+    Other options:
+      --outdir                      The output directory where the results will be saved
+      --email                       Set this parameter to your e-mail address to get a summary e-mail with details of the run sent to you when the workflow exits
+      -name                         Name for the pipeline run. If not specified, Nextflow will automatically generate a random mnemonic.
+    """.stripIndent()
+}
+
+/*
+ * SET UP CONFIGURATION VARIABLES
+ */
+
+// Show help emssage
+if (params.help){
+    helpMessage()
+    exit 0
+}
+
+// Configurable variables
+params.name = false
+params.multiqc_config = "$baseDir/conf/multiqc_config.yaml"
+params.email = false
+params.plaintext_email = false
+multiqc_config = file(params.multiqc_config)
+output_docs = file("$baseDir/docs/output.md")
+
+// Validate inputs
+if ( params.genome ){
+    genome = file(params.genome)
+    if( !genome.exists() ) exit 1, "Genome directory not found: ${params.genome}"
+}
+
+// if ( params.bt2index ){
+//     bt2_index = file("${params.bt2index}.fa").baseName
+//     bt2_indices = Channel.fromPath( "${params.bt2index}*.bt2" ).toList()
+//     // if( !bt2_indices[0].exists() ) exit 1, "Reference genome Bowtie 2 index not found: ${params.bt2index}"
+// }
+//
+ if ( params.chrom_sizes ){
+     chrom_sizes = file(params.chrom_sizes)
+     if( !chrom_sizes.exists() ) exit 1, "Genome chrom sizes file not found: ${params.chrom_sizes}"
+ }
+
+// if ( params.tf_motif_sites ){
+//     tf_motifs_dir = file("${params.tf_motif_sites}")
+// }
+
+if ( params.deep_container ){
+    deep_container = file("${params.deep_container}")
+}
+
+if ( params.bbmap_adapters ){
+    bbmap_adapters = file("${params.bbmap_adapters}")
+}
+
+if ( params.hisat2_indices ){
+    hisat2_indices = file("${params.hisat2_indices}")
+}
+
+if ( params.genome_refseq ){
+    genome_refseq = file("${params.genome_refseq}")
+}
+
+if ( params.effective_genome_size ){
+    effective_genome_size = file("${params.effective_genome_size}")
+}
+
+if ( params.sras ){
+  sra_ids_list = params.sras.tokenize(",")
+} else {
+  Channel.empty().set {sra_ids_list }
+}
+
+// Has the run name been specified by the user?
+//  this has the bonus effect of catching both -name and --name
+custom_runName = params.name
+if( !(workflow.runName ==~ /[a-z]+_[a-z]+/) ){
+  custom_runName = workflow.runName
+}
+
+
+
+/*
+ * Create a channel for input read files
+ */
+
+if(params.readPaths ){
+     if(params.singleEnd){
+         Channel
+             .from(params.readPaths)
+             .map { row -> [ row[0], [file(row[1][0])]] }
+             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
+             .into { read_files_fastqc; read_files_trimming }
+     } else {
+         Channel
+             .from(params.readPaths)
+             .map { row -> [ row[0], [file(row[1][0]), file(row[1][1])]] }
+             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
+             .into { read_files_fastqc; read_files_trimming }
+     }
+ }
+else if (params.fastq_dir_pattern) {
+    Channel
+        .fromFilePairs(params.fastq_dir_pattern)
+        .into { read_files_fastqc; read_files_trimming }
+}
+else if (params.sra_dir_pattern) {
+    read_files_sra = Channel
+                        .fromPath(params.sra_dir_pattern)
+                        .map { file -> tuple(file.baseName, file) }
+}
+else if (params.sras) {
+        sra_read_files.into { read_files_fastqc; read_files_trimming }
+}
+
+else {
+     Channel
+         .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
+         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
+         .into { read_files_fastqc; read_files_trimming }
+ }
+
+
+// Header log info
+log.info """=======================================================
+                                          ,--./,-.
+          ___     __   __   __   ___     /,-._.--~\'
+    |\\ | |__  __ /  ` /  \\ |__) |__         }  {
+    | \\| |       \\__, \\__/ |  \\ |___     \\`-._,-`-,
+                                          `._,._,\'
+
+NCBI-Hackathons/ATACFlow v${params.version}"
+======================================================="""
+def summary = [:]
+summary['Pipeline Name']    = 'NCBI-Hackathons/ATACFlow'
+summary['Pipeline Version'] = params.version
+summary['Run Name']         = custom_runName ?: workflow.runName
+summary['Reads']            = params.reads
+summary['Genome Ref']       = params.genome
+summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
+summary['Max Memory']       = params.max_memory
+summary['Max CPUs']         = params.max_cpus
+summary['Max Time']         = params.max_time
+summary['Output dir']       = params.outdir
+summary['Working dir']      = workflow.workDir
+summary['Container Engine'] = workflow.containerEngine
+if(workflow.containerEngine) summary['Container'] = workflow.container
+summary['Current home']     = "$HOME"
+summary['Current user']     = "$USER"
+summary['Current path']     = "$PWD"
+summary['Working dir']      = workflow.workDir
+summary['Output dir']       = params.outdir
+summary['Script dir']       = workflow.projectDir
+summary['Config Profile']   = workflow.profile
+if(params.email) summary['E-mail Address'] = params.email
+log.info summary.collect { k,v -> "${k.padRight(15)}: $v" }.join("\n")
+log.info "========================================="
+
+// Check that Nextflow version is up to date enough
+// try / throw / catch works for NF versions < 0.25 when this was implemented
+try {
+    if( ! nextflow.version.matches(">= $params.nf_required_version") ){
+        throw GroovyException('Nextflow version too old')
+    }
+} catch (all) {
+    log.error "====================================================\n" +
+              "  Nextflow version $params.nf_required_version required! You are running v$workflow.nextflow.version.\n" +
+              "  Pipeline execution will continue, but things may break.\n" +
+              "  Please run `nextflow self-update` to update Nextflow.\n" +
+              "============================================================"
+}
+
+
+/*
+ * Parse software version numbers
+ */
+process get_software_versions {
+    validExitStatus 0,1
+
+    output:
+//    file 'software_versions_mqc.yaml' into software_versions_yaml
+    file 'all_versions' into software_versions_yaml
+
+    script:
+    """
+    module load fastx-toolkit/0.0.13
+    module load fastqc/0.11.5
+    module load bbmap/38.05
+    module load samtools/1.8
+    module load hisat2/2.1.0
+    module load preseq/2.0.3
+    module load python/2.7.14/rseqc
+    module load bedtools/2.25.0
+    module load igvtools/2.3.75
+
+    echo $params.version > v_pipeline.txt
+    echo $workflow.nextflow.version > v_nextflow.txt
+    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement -h | grep Toolkit > v_fastx_reverse_complement.txt || true
+    fastqc --version > v_fastqc.txt
+    bbduk.sh --version > v_bbduk.txt || true
+    hisat2 --version | grep hisat2 > v_hisat2.txt
+    samtools --version | grep samtools > v_samtools.txt
+    #preseq --version > v_preseq.txt
+    echo "2.0.3" > v_preseq.txt
+    read_distribution.py --version > v_rseqc.txt
+    bedtools --version > v_bedtools.txt
+    /opt/igvtools/2.3.75/igvtools version | grep Version > v_igvtools.txt
+
+    for X in `ls *.txt`; do
+        cat \$X >> all_versions;
+    done
+#    scrape_software_versions.py > software_versions_mqc.yaml
+    """
+}
+
+
+process sra_mapping {
+    publishDir "${params.outdir}/fastq-dump/", mode: 'copy', pattern: '*.fastq'
+    tag "$name"
+
+    input:
+    set val(name), file(reads) from read_files_sra
+
+    output:
+    set val(name), file("*.fastq") into fastq_reads_for_reverse_complement
+    set val(name), file("*.fastq") into fastq_reads_for_qc
+
+    script:
+    // TEST THIS LATER, SHOULD BE FASTER AND DEFAULTS TO --split-3
+    // fasterq-dump ${sra_id}
+    """
+    module load sra/2.8.0
+
+    fastq-dump ${reads}
+    """
+}
+
+//fastq_read_files
+//   .into {fastq_reads_for_reverse_complement; fastq_reads_for_qc}
+
+
+/*
+ * STEP 1 - Produces reverse complement of each short-read seqeuence
+ */
+
+process reverse_complement {
+    validExitStatus 0,1
+    tag "$name"
+    publishDir "${params.outdir}/fastx/", mode: 'copy', pattern: '*.flip.fastq'
+
+    input:
+    set val(name), file(reads) from fastq_reads_for_reverse_complement
+
+    output:
+    set val(name), file("*.flip.fastq") into flipped_reads_ch
+
+    script:
+    """
+    module load fastx-toolkit/0.0.13
+
+    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement \
+        -Q33 \
+        -i ${reads} \
+        -o ${name}.flip.fastq
+    """
+}
+
+
+/*
+ * STEP 2 - FastQC
+ */
+
+process fastqc {
+    tag "$name"
+    publishDir "${params.outdir}/fastqc", mode: 'copy',
+        saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
+
+    input:
+    set val(name), file(reads) from fastq_reads_for_qc
+
+    output:
+    file "*_fastqc.{zip,html}" into fastqc_results
+
+    script:
+    """
+    module load fastqc/0.11.5
+
+    fastqc $reads
+    """
+}
+
+
+/*
+ * STEP 2 - Trimming
+ */
+
+process bbduk {
+    validExitStatus 0,1
+    tag "$name"
+    cpus 16
+    publishDir "${params.outdir}/bbduk", mode: 'copy', pattern: "${name}.trim.fastq",
+    saveAs: {filename -> filename.indexOf(".txt") > 0 ? "stats/$filename" : "$filename"}
+
+    input:
+    set val(name), file(flipped_reads) from flipped_reads_ch
+
+    output:
+    set val(name), file "*.trim.fastq" into trimmed_reads_for_fastqc
+
+    script:
+    """
+    module load bbmap/38.05
+
+    bbduk.sh -Xmx20g \
+              t=16 \
+              overwrite= t \
+              in=${flipped_reads} \
+              out=${name}.trim.fastq \
+              ref=${bbmap_adapters} \
+              ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+              maq=10 minlen=20 \
+              stats=${name}.trimstats.txt \
+              refstats=${name}.refstats.txt \
+              ehist=${name}.ehist.txt
+    """
+}
+
+// trimmed_reads_ch
+//    .into {trimmed_reads_for_fastqc; trimmed_reads_for_hisat2}
+
+
+/*
+ * STEP 2 - Trimmed FastQC
+ */
+
+process fastqc_trimmed {
+    tag "$name"
+    publishDir "${params.outdir}/fastqc", mode: 'copy',
+        saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
+
+    input:
+    set val(name), file(trimmed_reads) from trimmed_reads_for_fastqc
+
+    output:
+    file "*_fastqc.{zip,html}" into trimmed_fastqc_results
+
+    script:
+    """
+    module load fastqc/0.11.5
+
+    fastqc $trimmed_reads
+    """
+}
+
+
+/*
+ * STEP 4 - Map reads to reference genome
+ */
+process hisat2 {
+    tag "$name"
+    cpus 32
+    publishDir "${params.outdir}/hisat2/", mode: 'copy', pattern: "${name}.trim.sam"
+// TODO: Copy this .sam.wc file as well
+
+    input:
+    file(indices) from hisat2_indices
+    set val(name), file(trimmed_reads) from trimmed_reads_for_hisat2
+
+    output:
+    set val(name), file("${name}.trim.sam") into mapped_sam_file_ch
+
+    script:
+    """
+    module load hisat2/2.1.0
+
+    hisat2  -p 32 \
+            --very-sensitive \
+            --no-spliced-alignment \
+            -x ${indices}\
+            -U ${trimmed_reads} \
+            > ${name}.trim.sam
+
+    wc -l ${name}.trim.sam > ${name}.trim.sam.wc
+    """
+}
+
+
+/*
+ * STEP X - Convert to BAM format and sort
+ */
+
+process samtools {
+    tag "$name"
+    cpus 32
+    memory '100 GB'
+    time '96h'
+    publishDir "${params.outdir}/samtools/", mode: 'copy', pattern: "${name}.sorted.bam"
+
+    input:
+    set val(name), file(mapped_sam) from mapped_sam_file_ch
+
+    output:
+    set val(name), file("${name}.sorted.bam") into sorted_bam_ch
+    set val(name), file("${name}.sorted.bam.flagstat") into flagstat_ch
+
+    script:
+    """
+    module load samtools/1.8
+
+    samtools view -S -b -o ${name}.trim.bam ${mapped_sam}
+    samtools flagstat ${name}.trim.bam > ${name}.trim.bam.flagstat
+    samtools sort -m100G ${name}.trim.bam > ${name}.trim.sorted.bam
+    samtools flagstat ${name}.trim.sorted.bam > ${name}.trim.sorted.bam.flagstat
+    samtools index ${name}.trim.sorted.bam ${name}.trim.sorted.bam.bai
+    """
+}
+
+sorted_bam_ch
+   .into {sorted_bams_for_bedtools; sorted_bams_for_preseq; sorted_bams_for_rseqc}
+
+
+/*
+ *STEP X - Plot the estimated complexity of a sample, and estimate future yields
+ *         for complexity if the sample is sequenced at higher read depths.
+ */
+
+process preseq {
+    tag "$name"
+    publishDir "${params.outdir}/preseq/", mode: 'copy', pattern: "${name}.lc_extrap.txt"
+
+    input:
+    set val(name), file(bam_file) from sorted_bams_for_preseq
+
+    output:
+    set val(name), file("${name}.lc_extrap.txt") into preseq_ch
+
+    script:
+    """
+    module load preseq/2.0.3
+
+    preseq c_curve -B -o ${name}.c_curve.txt \
+           ${bam_file}
+    preseq lc_extrap -B -o ${name}.lc_extrap.txt \
+           ${bam_file}
+    """
+ }
+
+
+/*
+ *STEP X - Analyze read distributions using RSeQC
+ */
+
+process rseqc {
+    tag "$name"
+    publishDir "${params.outdir}/rseqc/", mode: 'copy', pattern: "${name}.read_dist.txt"
+
+    input:
+    set val(name), file(bam_file) from sorted_bams_for_rseqc
+
+    output:
+    set val(name), file("${name}.read_dist.txt") into rseqc_ch
+
+    script:
+    """
+    module load python/2.7.14/rseqc
+
+    read_distribution.py -i ${bam_file} \
+                         -r ${genome_refseq} \
+                         > ${name}.read_dist.txt
+    """
+ }
+
+
+/*
+ *STEP X - Create BedGraph and BigWig files
+ */
+
+process bedtools {
+    tag "$name"
+    cpus 16
+    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "${name}.trim.rpkm.b*"
+
+    input:
+    set val(name), file(bam_file) from sorted_bams_for_bedtools
+    file(chrom_sizes) from chrom_sizes
+
+    output:
+    set val(name), file("${name}.trim.rpkm.bedGraph") into normalized_bed_ch
+
+    script:
+    """
+    module load bedtools/2.25.0
+
+    bamCoverage --numberOfProcessors 16 \
+                -b ${bam_file} \
+                --filterRNAstrand forward \
+                --normalizeUsing RPKM \
+                --effectiveGenomeSize ${effective_genome_size} \
+                -of bigwig \
+                -o ${name}.pos.trim.rpkm.bw
+
+    bamCoverage --numberOfProcessors 16 \
+                -b ${bam_file} \
+                --filterRNAstrand reverse \
+                --normalizeUsing RPKM \
+                --effectiveGenomeSize ${effective_genome_size} \
+                -of bigwig \
+                -o ${name}.neg.trim.rpkm.bw
+
+    bamCoverage --numberOfProcessors 16 \
+                -b ${bam_file} \
+                --filterRNAstrand forward \
+                --normalizeUsing RPKM \
+                --effectiveGenomeSize ${effective_genome_size} \
+                -of bedgraph \
+                -o ${name}.pos.trim.rpkm.bedGraph
+
+    bamCoverage --numberOfProcessors 16 \
+                -b ${bam_file} \
+                --filterRNAstrand reverse \
+                --normalizeUsing RPKM \
+                --effectiveGenomeSize ${effective_genome_size} \
+                -of bedgraph \
+                -o ${name}.tmp.neg.trim.rpkm.bedGraph
+
+    awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.trim.rpkm.bedGraph \
+        > ${name}.neg.trim.rpkm.bedGraph
+    rm ${name}.tmp.neg.trim.rpkm.bedGraph
+
+    cat ${name}.pos.trim.rpkm.bedGraph <(grep -v '^@' ${name}.neg.trim.rpkm.bedGraph) \
+        | sortBed \
+        > ${name}.trim.rpkm.bedGraph
+    """
+ }
+
+// normalized_bed_ch
+//     .combine(flagstat_ch, by:0)
+//     .set {bed_and_flagset_ch}
+
+/*
+ *STEP X - IGV Tools
+ */
+
+process igvtools {
+    tag "$name"
+    errorStrategy 'ignore'
+    publishDir "${params.outdir}/igv_tools/", mode: 'copy', pattern: "${name}.trim.rpkm.tdf"
+
+    input:
+    set val(name), file(normalized_bed) from normalized_bed_ch
+    file(genome)
+
+    output:
+    set val(name), file("${name}.trim.rpkm.tdf") into tiled_data_ch
+
+    script:
+    """
+    module load igvtools/2.3.75
+
+    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bed} ${name}.trim.rpkm.tdf ${genome}
+    """
+ }
+
+
+/*
+ * STEP X - MultiQC
+ */
+process multiqc {
+    publishDir "${params.outdir}/MultiQC", mode: 'copy'
+
+    input:
+    file multiqc_config
+    file ('fastqc/*') from fastqc_results.collect()
+    file ('software_versions/*') from software_versions_yaml
+
+    output:
+    file "*multiqc_report.html" into multiqc_report
+    file "*_data"
+
+    script:
+    rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
+    rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
+    """
+    multiqc -f $rtitle $rfilename --config $multiqc_config .
+    """
+}
+
+
+
+/*
+ * STEP 3 - Output Description HTML
+ *
+*
+*process output_documentation {
+*    tag "$prefix"
+*    publishDir "${params.outdir}/Documentation", mode: 'copy'
+*
+*    input:
+*    file output_docs
+*
+*    output:
+*    file "results_description.html"
+*
+*    script:
+*    """
+*    markdown_to_html.r $output_docs results_description.html
+*    """
+*}
+
+
+
+/*
+ * Completion e-mail notification
+ */
+workflow.onComplete {
+
+    // Set up the e-mail variables
+    def subject = "[NCBI-Hackathons/ATACFlow] Successful: $workflow.runName"
+    if(!workflow.success){
+      subject = "[NCBI-Hackathons/ATACFlow] FAILED: $workflow.runName"
+    }
+    def email_fields = [:]
+    email_fields['version'] = params.version
+    email_fields['runName'] = custom_runName ?: workflow.runName
+    email_fields['success'] = workflow.success
+    email_fields['dateComplete'] = workflow.complete
+    email_fields['duration'] = workflow.duration
+    email_fields['exitStatus'] = workflow.exitStatus
+    email_fields['errorMessage'] = (workflow.errorMessage ?: 'None')
+    email_fields['errorReport'] = (workflow.errorReport ?: 'None')
+    email_fields['commandLine'] = workflow.commandLine
+    email_fields['projectDir'] = workflow.projectDir
+    email_fields['summary'] = summary
+    email_fields['summary']['Date Started'] = workflow.start
+    email_fields['summary']['Date Completed'] = workflow.complete
+    email_fields['summary']['Pipeline script file path'] = workflow.scriptFile
+    email_fields['summary']['Pipeline script hash ID'] = workflow.scriptId
+    if(workflow.repository) email_fields['summary']['Pipeline repository Git URL'] = workflow.repository
+    if(workflow.commitId) email_fields['summary']['Pipeline repository Git Commit'] = workflow.commitId
+    if(workflow.revision) email_fields['summary']['Pipeline Git branch/tag'] = workflow.revision
+    email_fields['summary']['Nextflow Version'] = workflow.nextflow.version
+    email_fields['summary']['Nextflow Build'] = workflow.nextflow.build
+    email_fields['summary']['Nextflow Compile Timestamp'] = workflow.nextflow.timestamp
+
+    // Render the TXT template
+    def engine = new groovy.text.GStringTemplateEngine()
+    def tf = new File("$baseDir/assets/email_template.txt")
+    def txt_template = engine.createTemplate(tf).make(email_fields)
+    def email_txt = txt_template.toString()
+
+    // Render the HTML template
+    def hf = new File("$baseDir/assets/email_template.html")
+    def html_template = engine.createTemplate(hf).make(email_fields)
+    def email_html = html_template.toString()
+
+    // Render the sendmail template
+    def smail_fields = [ email: params.email, subject: subject, email_txt: email_txt, email_html: email_html, baseDir: "$baseDir", attach1: "$baseDir/results/Documentation/pipeline_report.html", attach2: "$baseDir/results/pipeline_info/NCBI-Hackathons/ATACFlow_report.html", attach3: "$baseDir/results/pipeline_info/NCBI-Hackathons/ATACFlow_timeline.html" ]
+    def sf = new File("$baseDir/assets/sendmail_template.txt")
+    def sendmail_template = engine.createTemplate(sf).make(smail_fields)
+    def sendmail_html = sendmail_template.toString()
+
+    // Send the HTML e-mail
+    if (params.email) {
+        try {
+          if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
+          // Try to send HTML e-mail using sendmail
+          [ 'sendmail', '-t' ].execute() << sendmail_html
+          log.info "[NCBI-Hackathons/ATACFlow] Sent summary e-mail to $params.email (sendmail)"
+        } catch (all) {
+          // Catch failures and try with plaintext
+          [ 'mail', '-s', subject, params.email ].execute() << email_txt
+          log.info "[NCBI-Hackathons/ATACFlow] Sent summary e-mail to $params.email (mail)"
+        }
+    }
+
+    // Write summary e-mail HTML to a file
+    def output_d = new File( "${params.outdir}/Documentation/" )
+    if( !output_d.exists() ) {
+      output_d.mkdirs()
+    }
+    def output_hf = new File( output_d, "pipeline_report.html" )
+    output_hf.withWriter { w -> w << email_html }
+    def output_tf = new File( output_d, "pipeline_report.txt" )
+    output_tf.withWriter { w -> w << email_txt }
+
+    log.info "[NCBI-Hackathons/ATACFlow] Pipeline Complete"
+
+}

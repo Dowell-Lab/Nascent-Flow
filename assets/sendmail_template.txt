@@ -1,0 +1,15 @@
+To: $email
+Subject: $subject
+Mime-Version: 1.0
+Content-Type: multipart/related;boundary="nfmimeboundary"
+
+--nfmimeboundary
+Content-Type: text/html; charset=utf-8
+
+$email_html
+
+--nfmimeboundary--
+
+uuencode ${attach1} ${attach1}
+uuencode ${attach2} ${attach2}
+uuencode ${attach3} ${attach3}
