@@ -475,7 +475,7 @@ process preseq {
     set val(name), file(bam_file) from sorted_bams_for_preseq
 
     output:
-    set val(name), file("${name}.lc_extrap.txt") into preseq_ch
+    file("${name}.lc_extrap.txt") into preseq_ch
 
     script:
     """
@@ -501,7 +501,7 @@ process rseqc {
     set val(name), file(bam_file) from sorted_bams_for_rseqc
 
     output:
-    set val(name), file("${name}.read_dist.txt") into rseqc_ch
+    file("${name}.read_dist.txt") into rseqc_ch
 
     script:
     """
@@ -621,6 +621,8 @@ process multiqc {
     input:
     file multiqc_config
     file ('fastqc/*') from fastqc_results.collect()
+    file ('rseqc/*') from rseqc_ch.collect()
+    file ('preseq/*') from preseq_ch.collect()
     file ('software_versions/*') from software_versions_yaml
 
     output:
