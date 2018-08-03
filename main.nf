@@ -86,11 +86,11 @@ if ( params.effective_genome_size ){
     effective_genome_size = "${params.effective_genome_size}"
 }
 
-if ( params.sras ){
-  sra_ids_list = params.sras.tokenize(",")
-} else {
-  Channel.empty().set {sra_ids_list }
-}
+//if ( params.sras ){
+//  sra_ids_list = params.sras.tokenize(",")
+//} else {
+//  Channel.empty().set {sra_ids_list }
+//}
 
 // Has the run name been specified by the user?
 //  this has the bonus effect of catching both -name and --name
