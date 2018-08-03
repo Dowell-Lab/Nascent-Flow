@@ -104,37 +104,35 @@ if( !(workflow.runName ==~ /[a-z]+_[a-z]+/) ){
 /*
  * Create a channel for input read files
  */
-
-if(params.readPaths ){
-     if(params.singleEnd){
-         Channel
-             .from(params.readPaths)
-             .map { row -> [ row[0], [file(row[1][0])]] }
-             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-             .into { read_files_fastqc; read_files_trimming }
-     } else {
-         Channel
-             .from(params.readPaths)
-             .map { row -> [ row[0], [file(row[1][0]), file(row[1][1])]] }
-             .ifEmpty { exit 1, "params.readPaths was empty - no input files supplied" }
-             .into { read_files_fastqc; read_files_trimming }
-     }
- }
-else if (params.fastq_dir_pattern) {
-    Channel
-        .fromFilePairs(params.fastq_dir_pattern)
-        .into { read_files_fastqc; read_files_trimming }
+if (params.fastq_dir_pattern) {
+    fastq_reads_for_qc = Channel
+                        .fromPath(params.fastq_dir_pattern)
+                        .map { file -> tuple(file.baseName, file) }
+    fastq_reads_for_reverse_complement = Channel
+                                          .fromPath(params.fastq_dir_pattern)
+                                          .map { file -> tuple(file.baseName, file) }
 }
-else if (params.sra_dir_pattern) {
+else {
+    Channel
+        .empty()
+        .into { fastq_reads_for_qc; fastq_reads_for_reverse_complement }
+}
+
+if (params.sra_dir_pattern) {
+    println("pattern for SRAs provided")
     read_files_sra = Channel
                         .fromPath(params.sra_dir_pattern)
                         .map { file -> tuple(file.baseName, file) }
 }
-else if (params.sras) {
-        sra_read_files.into { read_files_fastqc; read_files_trimming }
+else {
+    read_files_sra = Channel.empty()
 }
 
-else {
+if (params.sras) {
+        sra_strings.into { read_files_fastqc; read_files_trimming }
+}
+
+if (params.sra_dir_pattern == "" and params.fastq_dir_pattern == "") {
      Channel
          .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
          .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
@@ -241,23 +239,23 @@ process get_software_versions {
 }
 
 
-process sra_mapping {
+process sra_dump {
     publishDir "${params.outdir}/fastq-dump/", mode: 'copy', pattern: '*.fastq'
-    tag "$name"
+    tag "$fname"
 
     input:
-    set val(name), file(reads) from read_files_sra
+    set val(fname), file(reads) from read_files_sra
 
     output:
-    set val(name), file("${name}.fastq") into fastq_reads_for_reverse_complement
-    set val(name), file("${name}.fastq") into fastq_reads_for_qc
+    set val(fname), file("${fname}.fastq") into fastq_reads_for_reverse_complement_from_sra
+    set val(fname), file("${fname}.fastq") into fastq_reads_for_qc_from_sra
 
     script:
     // TEST THIS LATER, SHOULD BE FASTER AND DEFAULTS TO --split-3
     // fasterq-dump ${sra_id}
     """
     module load sra/2.8.0
-    echo ${name}
+    echo ${fname}
 
     fastq-dump ${reads}
     """
@@ -277,7 +275,7 @@ process reverse_complement {
     publishDir "${params.outdir}/fastx/", mode: 'copy', pattern: '*.flip.fastq'
 
     input:
-    set val(name), file(reads) from fastq_reads_for_reverse_complement
+    set val(name), file(reads) from fastq_reads_for_reverse_complement.mix(fastq_reads_for_reverse_complement_from_sra)
 
     output:
     set val(name), file("*.flip.fastq") into flipped_reads_ch
@@ -305,7 +303,7 @@ process fastqc {
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
-    set val(name), file(reads) from fastq_reads_for_qc
+    set val(name), file(reads) from fastq_reads_for_qc.mix(fastq_reads_for_qc_from_sra)
 
     output:
     file "*_fastqc.{zip,html}" into fastqc_results
