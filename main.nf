@@ -1,7 +1,7 @@
 #!/usr/bin/env nextflow
 /*
 ========================================================================================
-                         GROFlow - Nascent Transcription PIPELINE
+                         NascentFlow - Nascent Transcription PIPELINE
 ========================================================================================
  Nascent Transcription Analysis Pipeline. Started 2018-06-21.
  #### Homepage / Documentation
@@ -16,7 +16,7 @@
 def helpMessage() {
     log.info"""
     =========================================
-     GROFlow v${params.version}
+     NascentFlow v${params.version}
     =========================================
     Usage:
 
@@ -148,10 +148,10 @@ log.info """=======================================================
     | \\| |       \\__, \\__/ |  \\ |___     \\`-._,-`-,
                                           `._,._,\'
 
-GROFlow v${params.version}"
+NascentFlow v${params.version}"
 ======================================================="""
 def summary = [:]
-summary['Pipeline Name']    = 'GROFlow'
+summary['Pipeline Name']    = 'NascentFlow'
 summary['Pipeline Version'] = params.version
 summary['Run Name']         = custom_runName ?: workflow.runName
 summary['Reads']            = params.reads
@@ -667,9 +667,9 @@ process multiqc {
 workflow.onComplete {
 
     // Set up the e-mail variables
-    def subject = "[GROFlow] Successful: $workflow.runName"
+    def subject = "[NascentFlow] Successful: $workflow.runName"
     if(!workflow.success){
-      subject = "[GROFlow] FAILED: $workflow.runName"
+      subject = "[NascentFlow] FAILED: $workflow.runName"
     }
     def email_fields = [:]
     email_fields['version'] = params.version
@@ -717,11 +717,11 @@ workflow.onComplete {
           if( params.plaintext_email ){ throw GroovyException('Send plaintext e-mail, not HTML') }
           // Try to send HTML e-mail using sendmail
           [ 'sendmail', '-t' ].execute() << sendmail_html
-          log.info "[GROFlow] Sent summary e-mail to $params.email (sendmail)"
+          log.info "[NascentFlow] Sent summary e-mail to $params.email (sendmail)"
         } catch (all) {
           // Catch failures and try with plaintext
           [ 'mail', '-s', subject, params.email ].execute() << email_txt
-          log.info "[GROFlow] Sent summary e-mail to $params.email (mail)"
+          log.info "[NascentFlow] Sent summary e-mail to $params.email (mail)"
         }
     }
 
@@ -735,6 +735,6 @@ workflow.onComplete {
     def output_tf = new File( output_d, "pipeline_report.txt" )
     output_tf.withWriter { w -> w << email_txt }
 
-    log.info "[GROFlow] Pipeline Complete"
+    log.info "[NascentFlow] Pipeline Complete"
 
 }
