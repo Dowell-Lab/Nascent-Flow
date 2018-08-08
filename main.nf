@@ -132,7 +132,7 @@ if (params.sras) {
         sra_strings.into { read_files_fastqc; read_files_trimming }
 }
 
-if (params.sra_dir_pattern == "" and params.fastq_dir_pattern == "") {
+if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
      Channel
          .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
          .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
