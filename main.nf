@@ -142,11 +142,16 @@ if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
 
 // Header log info
 log.info """=======================================================
-                                          ,--./,-.
-          ___     __   __   __   ___     /,-._.--~\'
-    |\\ | |__  __ /  ` /  \\ |__) |__         }  {
-    | \\| |       \\__, \\__/ |  \\ |___     \\`-._,-`-,
-                                          `._,._,\'
+ _   _    _    ____   ____ _____ _   _ _____
+| \ | |  / \  / ___| / ___| ____| \ | |_   _|
+|  \| | / _ \ \___ \| |   |  _| |  \| | | |
+| |\  |/ ___ \ ___) | |___| |___| |\  | | |
+|_| \_/_/   \_\____/ \____|_____|_| \_| |_|
+ _____ _     _____        __
+|  ___| |   / _ \ \      / /
+| |_  | |  | | | \ \ /\ / /
+|  _| | |__| |_| |\ V  V /
+|_|   |_____\___/  \_/\_/
 
 NascentFlow v${params.version}"
 ======================================================="""
@@ -240,7 +245,7 @@ process get_software_versions {
 
 
 process sra_dump {
-    publishDir "${params.outdir}/fastq-dump/", mode: 'copy', pattern: '*.fastq'
+    publishDir "${params.outdir}/trimming/", mode: 'copy', pattern: '*.fastq'
     tag "$fname"
 
     input:
@@ -272,7 +277,7 @@ process sra_dump {
 process reverse_complement {
     validExitStatus 0,1
     tag "$name"
-    publishDir "${params.outdir}/fastx/", mode: 'copy', pattern: '*.flip.fastq'
+    publishDir "${params.outdir}/trimming/", mode: 'copy', pattern: '*.flip.fastq'
 
     input:
     set val(name), file(reads) from fastq_reads_for_reverse_complement.mix(fastq_reads_for_reverse_complement_from_sra)
@@ -299,7 +304,7 @@ process reverse_complement {
 
 process fastqc {
     tag "$name"
-    publishDir "${params.outdir}/fastqc", mode: 'copy',
+    publishDir "${params.outdir}/qc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
@@ -326,7 +331,7 @@ process bbduk {
     validExitStatus 0,1
     tag "$name"
     cpus 16
-    publishDir "${params.outdir}/bbduk", mode: 'copy', pattern: "${name}.trim.fastq",
+    publishDir "${params.outdir}/trimming/", mode: 'copy', pattern: "${name}.trim.fastq",
     saveAs: {filename -> filename.indexOf(".txt") > 0 ? "stats/$filename" : "$filename"}
 
     input:
@@ -365,7 +370,7 @@ process bbduk {
 
 process fastqc_trimmed {
     tag "$prefix"
-    publishDir "${params.outdir}/fastqc", mode: 'copy',
+    publishDir "${params.outdir}/qc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
@@ -396,7 +401,7 @@ process hisat2 {
 
     tag "$prefix"
     cpus 32
-    publishDir "${params.outdir}/hisat2/", mode: 'copy', pattern: "${prefix}.trim.sam"
+    publishDir "${params.outdir}/mapped/", mode: 'copy', pattern: "${prefix}.trim.sam"
 // TODO: Copy this .sam.wc file as well
 
     input:
@@ -434,7 +439,7 @@ process samtools {
     cpus 32
     memory '100 GB'
     time '96h'
-    publishDir "${params.outdir}/samtools/", mode: 'copy', pattern: "${name}.sorted.bam"
+    publishDir "${params.outdir}/mapped/", mode: 'copy', pattern: "${name}.sorted.bam"
 
     input:
     set val(name), file(mapped_sam) from mapped_sam_file_ch
@@ -467,7 +472,7 @@ sorted_bam_ch
 
 process preseq {
     tag "$name"
-    publishDir "${params.outdir}/preseq/", mode: 'copy', pattern: "${name}.lc_extrap.txt"
+    publishDir "${params.outdir}/qc/", mode: 'copy', pattern: "${name}.lc_extrap.txt"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_preseq
@@ -493,7 +498,7 @@ process preseq {
 
 process rseqc {
     tag "$name"
-    publishDir "${params.outdir}/rseqc/", mode: 'copy', pattern: "${name}.read_dist.txt"
+    publishDir "${params.outdir}/qc/", mode: 'copy', pattern: "${name}.read_dist.txt"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_rseqc
@@ -519,7 +524,7 @@ process rseqc {
 process bedtools {
     tag "$name"
     cpus 16
-    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "${name}.rpkm.b*"
+    publishDir "${params.outdir}/mapped/", mode: 'copy', pattern: "${name}.rpkm.b*"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools
@@ -597,7 +602,7 @@ process igvtools {
     // This often blows up due to a ceiling in memory usage, so we can ignore
     // and re-run later as it's non-essential.
     errorStrategy 'ignore'
-    publishDir "${params.outdir}/igv_tools/", mode: 'copy', pattern: "${name}.rpkm.tdf"
+    publishDir "${params.outdir}/mapped/", mode: 'copy', pattern: "${name}.rpkm.tdf"
 
     input:
     set val(name), file(normalized_bed) from normalized_bed_ch
@@ -619,7 +624,7 @@ process igvtools {
  * STEP X - MultiQC
  */
 process multiqc {
-    publishDir "${params.outdir}/MultiQC", mode: 'copy'
+    publishDir "${params.outdir}/qc/", mode: 'copy'
 
     input:
     file multiqc_config
@@ -650,7 +655,7 @@ process multiqc {
 *
 *process output_documentation {
 *    tag "$prefix"
-*    publishDir "${params.outdir}/Documentation", mode: 'copy'
+*    publishDir "${params.outdir}/doc/", mode: 'copy'
 *
 *    input:
 *    file output_docs
@@ -731,7 +736,7 @@ workflow.onComplete {
     }
 
     // Write summary e-mail HTML to a file
-    def output_d = new File( "${params.outdir}/Documentation/" )
+    def output_d = new File( "${params.outdir}/doc/" )
     if( !output_d.exists() ) {
       output_d.mkdirs()
     }
