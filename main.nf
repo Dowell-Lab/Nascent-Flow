@@ -575,13 +575,10 @@ process bedtools {
     ##             -o ${name}.tmp.neg.rpkm.bedGraph
 
     bedtools genomecov -ibam ${bam_file} -bg -strand + > ${name}.tmp.pos.rpkm.bedGraph &
-    bedtools genomecov -ibam ${bam_file} -bg -strand - > ${name}.tmp.neg.rpkm.bedGraph &
+    bedtools genomecov -ibam ${bam_file} -bg -strand - | awk -v OFS='\t' '{print \$1, \$2, \$3, -\$4}' > ${name}.tmp.neg.rpkm.bedGraph &
     wait
 
     echo "Finished Coverage"
-
-    awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.rpkm.bedGraph \
-        > ${name}.neg.rpkm.bedGraph
 
     cat ${name}.tmp.pos.rpkm.bedGraph ${name}.tmp.neg.rpkm.bedGraph \
       | sort -k 1,1 -k2,2n \
