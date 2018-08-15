@@ -533,49 +533,54 @@ process bedtools {
     module load bedtools/2.25.0
     module load singularity/2.4
 
-    singularity exec ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
-                -b ${bam_file} \
-                --filterRNAstrand forward \
-                --normalizeUsing RPKM \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bigwig \
-                -o ${name}.pos.rpkm.bw
+    ## singularity exec ${deep_container} \
+    ## bamCoverage --numberOfProcessors 16 \
+    ##             -b ${bam_file} \
+    ##             --filterRNAstrand forward \
+    ##             --normalizeUsing RPKM \
+    ##             --effectiveGenomeSize ${effective_genome_size} \
+    ##             -of bigwig \
+    ##             -o ${name}.pos.rpkm.bw
 
-    singularity exec ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
-                -b ${bam_file} \
-                --filterRNAstrand reverse \
-                --normalizeUsing RPKM \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bigwig \
-                -o ${name}.neg.rpkm.bw
+    ## singularity exec ${deep_container} \
+    ## bamCoverage --numberOfProcessors 16 \
+    ##             -b ${bam_file} \
+    ##             --filterRNAstrand reverse \
+    ##             --normalizeUsing RPKM \
+    ##             --effectiveGenomeSize ${effective_genome_size} \
+    ##             -of bigwig \
+    ##             -o ${name}.neg.rpkm.bw
 
-    singularity exec ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
-                -b ${bam_file} \
-                --filterRNAstrand forward \
-                --normalizeUsing RPKM \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bedgraph \
-                -o ${name}.pos.rpkm.bedGraph
+    ## singularity exec ${deep_container} \
+    ## bamCoverage --numberOfProcessors 16 \
+    ##             -b ${bam_file} \
+    ##             --filterRNAstrand forward \
+    ##             --normalizeUsing RPKM \
+    ##             --effectiveGenomeSize ${effective_genome_size} \
+    ##             -of bedgraph \
+    ##             -o ${name}.pos.rpkm.bedGraph
 
-    singularity exec ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
-                -b ${bam_file} \
-                --filterRNAstrand reverse \
-                --normalizeUsing RPKM \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bedgraph \
-                -o ${name}.tmp.neg.rpkm.bedGraph
+    ## singularity exec ${deep_container} \
+    ## bamCoverage --numberOfProcessors 16 \
+    ##             -b ${bam_file} \
+    ##             --filterRNAstrand reverse \
+    ##             --normalizeUsing RPKM \
+    ##             --effectiveGenomeSize ${effective_genome_size} \
+    ##             -of bedgraph \
+    ##             -o ${name}.tmp.neg.rpkm.bedGraph
+
+    bedtools genomecov -ibam ${bam_file} -bg -strand + > ${name}.tmp.pos.rpkm.bedGraph &
+    bedtools genomecov -ibam ${bam_file} -bg -strand - > ${name}.tmp.neg.rpkm.bedGraph &
+    wait
+
+    echo "Finished Coverage"
 
     awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.rpkm.bedGraph \
         > ${name}.neg.rpkm.bedGraph
-    rm ${name}.tmp.neg.rpkm.bedGraph
 
-    cat ${name}.pos.rpkm.bedGraph <(grep -v '^@' ${name}.neg.rpkm.bedGraph) \
-        | sortBed \
-        > ${name}.rpkm.bedGraph
+    cat ${name}.tmp.pos.rpkm.bedGraph ${name}.tmp.neg.rpkm.bedGraph \
+      | sort -k 1,1 -k2,2n \
+      > ${name}.rpkm.bedGraph
     """
  }
 
