@@ -432,7 +432,7 @@ process hisat2 {
 process samtools {
     tag "$name"
     cpus 32
-    memory '100 GB'
+    memory '200 GB'
     time '96h'
     publishDir "${params.outdir}/samtools/", mode: 'copy', pattern: "${name}.sorted.bam"
 
@@ -517,9 +517,12 @@ process rseqc {
  */
 
 process bedtools {
+    validExitStatus 0,143
+    errorStrategy 'ignore'
     tag "$name"
     cpus 16
-    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "${name}.rpkm.b*"
+    memory '20 GB'
+    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "${name}*.b*"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools
@@ -527,13 +530,16 @@ process bedtools {
 
     output:
     set val(name), file("${name}.rpkm.bedGraph") into normalized_bed_ch
+    set val(name), file("${name}.*.bedGraph") into all_bed_ch
 
     script:
     """
     module load bedtools/2.25.0
     module load singularity/2.4
 
-    singularity exec ${deep_container} \
+    echo "Creating normalized BigWigs"
+
+    singularity exec -H ${params.singularity_home} ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
                 --filterRNAstrand forward \
@@ -542,7 +548,7 @@ process bedtools {
                 -of bigwig \
                 -o ${name}.pos.rpkm.bw
 
-    singularity exec ${deep_container} \
+    singularity exec -H ${params.singularity_home} ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
                 --filterRNAstrand reverse \
@@ -551,7 +557,27 @@ process bedtools {
                 -of bigwig \
                 -o ${name}.neg.rpkm.bw
 
-    singularity exec ${deep_container} \
+    echo "Creating coverage files"
+
+    singularity exec -H ${params.singularity_home} ${deep_container} \
+    bamCoverage --numberOfProcessors 16 \
+                -b ${bam_file} \
+                --filterRNAstrand forward \
+                --effectiveGenomeSize ${effective_genome_size} \
+                -of bedgraph \
+                -o ${name}.pos.bedGraph
+
+    singularity exec -H ${params.singularity_home} ${deep_container} \
+    bamCoverage --numberOfProcessors 16 \
+                -b ${bam_file} \
+                --filterRNAstrand reverse \
+                --effectiveGenomeSize ${effective_genome_size} \
+                -of bedgraph \
+                -o ${name}.tmp.neg.bedGraph
+
+    echo "Creating normalized coverage files"
+
+    singularity exec -H ${params.singularity_home} ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
                 --filterRNAstrand forward \
@@ -560,7 +586,7 @@ process bedtools {
                 -of bedgraph \
                 -o ${name}.pos.rpkm.bedGraph
 
-    singularity exec ${deep_container} \
+    singularity exec -H ${params.singularity_home} ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
                 --filterRNAstrand reverse \
@@ -569,10 +595,17 @@ process bedtools {
                 -of bedgraph \
                 -o ${name}.tmp.neg.rpkm.bedGraph
 
+    echo "Create the real negative strand coverage file"
+    awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.bedGraph \
+        > ${name}.neg.bedGraph
+    rm ${name}.tmp.neg.bedGraph
+
+    echo "Create the real negative strand normalized coverage file"
     awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.rpkm.bedGraph \
         > ${name}.neg.rpkm.bedGraph
     rm ${name}.tmp.neg.rpkm.bedGraph
 
+    echo "Merge positive and negative strand bedGraphs"
     cat ${name}.pos.rpkm.bedGraph <(grep -v '^@' ${name}.neg.rpkm.bedGraph) \
         | sortBed \
         > ${name}.rpkm.bedGraph
