@@ -142,17 +142,6 @@ if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
 
 // Header log info
 log.info """=======================================================
- _   _    _    ____   ____ _____ _   _ _____
-| \ | |  / \  / ___| / ___| ____| \ | |_   _|
-|  \| | / _ \ \___ \| |   |  _| |  \| | | |
-| |\  |/ ___ \ ___) | |___| |___| |\  | | |
-|_| \_/_/   \_\____/ \____|_____|_| \_| |_|
- _____ _     _____        __
-|  ___| |   / _ \ \      / /
-| |_  | |  | | | \ \ /\ / /
-|  _| | |__| |_| |\ V  V /
-|_|   |_____\___/  \_/\_/
-
 NascentFlow v${params.version}"
 ======================================================="""
 def summary = [:]
@@ -521,21 +510,21 @@ process rseqc {
  *STEP X - Create BedGraph and BigWig files
  */
 
-process bedtools {
+process bedtools_normalized_bigwig {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
     cpus 16
-    memory '20 GB'
-    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "${name}*.b*"
+    memory '100 GB'
+    time '96h'
+    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "*.bw"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools
     file(bam_indices) from sorted_bam_indices
 
     output:
-    set val(name), file("${name}.rpkm.bedGraph") into normalized_bed_ch
-    set val(name), file("${name}.*.bedGraph") into all_bed_ch
+    set val(name), file("${name}.*.rpkm.bw") into normalized_bw_ch
 
     script:
     """
@@ -561,24 +550,29 @@ process bedtools {
                 --effectiveGenomeSize ${effective_genome_size} \
                 -of bigwig \
                 -o ${name}.neg.rpkm.bw
+    """
+ }
 
-    echo "Creating coverage files"
+process bedtools_normalized_bedgraph {
+    validExitStatus 0,143
+    errorStrategy 'ignore'
+    tag "$name"
+    cpus 16
+    memory '100 GB'
+    time '96h'
+    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "*.bedGraph"
 
-    singularity exec -H ${params.singularity_home} ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
-                -b ${bam_file} \
-                --filterRNAstrand forward \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bedgraph \
-                -o ${name}.pos.bedGraph
+    input:
+    set val(name), file(bam_file) from sorted_bams_for_bedtools
+    file(bam_indices) from sorted_bam_indices
 
-    singularity exec -H ${params.singularity_home} ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
-                -b ${bam_file} \
-                --filterRNAstrand reverse \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bedgraph \
-                -o ${name}.tmp.neg.bedGraph
+    output:
+    set val(name), file("${name}.rpkm.bedGraph") into normalized_bed_ch
+
+    script:
+    """
+    module load bedtools/2.25.0
+    module load singularity/2.4
 
     echo "Creating normalized coverage files"
 
@@ -600,20 +594,66 @@ process bedtools {
                 -of bedgraph \
                 -o ${name}.tmp.neg.rpkm.bedGraph
 
-    echo "Create the real negative strand coverage file"
-    awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.bedGraph \
-        > ${name}.neg.bedGraph
-    rm ${name}.tmp.neg.bedGraph
-
     echo "Create the real negative strand normalized coverage file"
     awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.rpkm.bedGraph \
         > ${name}.neg.rpkm.bedGraph
     rm ${name}.tmp.neg.rpkm.bedGraph
 
-    echo "Merge positive and negative strand bedGraphs"
+    echo "Merge positive and negative normalized strand bedGraphs"
     cat ${name}.pos.rpkm.bedGraph <(grep -v '^@' ${name}.neg.rpkm.bedGraph) \
         | sortBed \
         > ${name}.rpkm.bedGraph
+    """
+ }
+
+process bedtools_bedgraph {
+    validExitStatus 0,143
+    errorStrategy 'ignore'
+    tag "$name"
+    cpus 16
+    memory '100 GB'
+    time '96h'
+    publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "*.bedGraph"
+
+    input:
+    set val(name), file(bam_file) from sorted_bams_for_bedtools
+    file(bam_indices) from sorted_bam_indices
+
+    output:
+    set val(name), file("${name}.bedGraph") into bed_ch
+
+    script:
+    """
+    module load bedtools/2.25.0
+    module load singularity/2.4
+
+    echo "Creating coverage files"
+
+    singularity exec -H ${params.singularity_home} ${deep_container} \
+    bamCoverage --numberOfProcessors 16 \
+                -b ${bam_file} \
+                --filterRNAstrand forward \
+                --effectiveGenomeSize ${effective_genome_size} \
+                -of bedgraph \
+                -o ${name}.pos.bedGraph
+
+    singularity exec -H ${params.singularity_home} ${deep_container} \
+    bamCoverage --numberOfProcessors 16 \
+                -b ${bam_file} \
+                --filterRNAstrand reverse \
+                --effectiveGenomeSize ${effective_genome_size} \
+                -of bedgraph \
+                -o ${name}.tmp.neg.bedGraph
+
+    echo "Create the real negative strand coverage file"
+    awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.bedGraph \
+        > ${name}.neg.bedGraph
+    rm ${name}.tmp.neg.bedGraph
+
+    echo "Merge positive and negative strand bedGraphs"
+    cat ${name}.pos.bedGraph <(grep -v '^@' ${name}.neg.bedGraph) \
+        | sortBed \
+        > ${name}.bedGraph
     """
  }
 
@@ -630,7 +670,7 @@ process igvtools {
     // This often blows up due to a ceiling in memory usage, so we can ignore
     // and re-run later as it's non-essential.
     errorStrategy 'ignore'
-    publishDir "${params.outdir}/mapped/", mode: 'copy', pattern: "${name}.rpkm.tdf"
+    publishDir "${params.outdir}/igv_tools/", mode: 'copy', pattern: "*.tdf"
 
     input:
     set val(name), file(normalized_bed) from normalized_bed_ch
