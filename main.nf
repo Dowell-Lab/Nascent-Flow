@@ -451,7 +451,7 @@ process samtools {
 }
 
 sorted_bam_ch
-   .into {sorted_bams_for_bedtools; sorted_bams_for_preseq; sorted_bams_for_rseqc}
+   .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_bedtools_normalized_bigwig; sorted_bams_for_bedtools_normalized_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc}
 
 
 /*
@@ -520,7 +520,7 @@ process bedtools_normalized_bigwig {
     publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "*.bw"
 
     input:
-    set val(name), file(bam_file) from sorted_bams_for_bedtools
+    set val(name), file(bam_file) from sorted_bams_for_bedtools_normalized_bigwig
     file(bam_indices) from sorted_bam_indices
 
     output:
@@ -563,7 +563,7 @@ process bedtools_normalized_bedgraph {
     publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "*.bedGraph"
 
     input:
-    set val(name), file(bam_file) from sorted_bams_for_bedtools
+    set val(name), file(bam_file) from sorted_bams_for_bedtools_normalized_bedgraph
     file(bam_indices) from sorted_bam_indices
 
     output:
@@ -616,7 +616,7 @@ process bedtools_bedgraph {
     publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "*.bedGraph"
 
     input:
-    set val(name), file(bam_file) from sorted_bams_for_bedtools
+    set val(name), file(bam_file) from sorted_bams_for_bedtools_bedgraph
     file(bam_indices) from sorted_bam_indices
 
     output:
