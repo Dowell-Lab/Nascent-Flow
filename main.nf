@@ -453,6 +453,8 @@ process samtools {
 sorted_bam_ch
    .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_bedtools_normalized_bigwig; sorted_bams_for_bedtools_normalized_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc}
 
+sorted_bam_indices
+    .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indices_for_bedtools_normalized_bigwig}
 
 /*
  *STEP X - Plot the estimated complexity of a sample, and estimate future yields
@@ -521,7 +523,7 @@ process bedtools_normalized_bigwig {
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_normalized_bigwig
-    file(bam_indices) from sorted_bam_indices
+    file(bam_indices) from sorted_bam_indices_for_bedtools_normalized_bigwig
 
     output:
     set val(name), file("${name}.*.rpkm.bw") into normalized_bw_ch
@@ -564,7 +566,7 @@ process bedtools_normalized_bedgraph {
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_normalized_bedgraph
-    file(bam_indices) from sorted_bam_indices
+    file(bam_indices) from sorted_bam_indices_for_bedtools_normalized_bedgraph
 
     output:
     set val(name), file("${name}.rpkm.bedGraph") into normalized_bed_ch
@@ -617,7 +619,7 @@ process bedtools_bedgraph {
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_bedgraph
-    file(bam_indices) from sorted_bam_indices
+    file(bam_indices) from sorted_bam_indices_for_bedtools_bedgraph
 
     output:
     set val(name), file("${name}.bedGraph") into bed_ch
