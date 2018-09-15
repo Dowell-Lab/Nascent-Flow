@@ -451,7 +451,7 @@ process samtools {
 }
 
 sorted_bam_ch
-   .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_bedtools_normalized_bigwig; sorted_bams_for_bedtools_normalized_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc}
+   .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_bedtools_normalized_bigwig; sorted_bams_for_bedtools_normalized_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep}
 
 sorted_bam_indices
     .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indices_for_bedtools_normalized_bigwig}
@@ -518,7 +518,7 @@ process bedtools_normalized_bigwig {
     tag "$name"
     cpus 16
     memory '100 GB'
-    time '96h'
+    time '24h'
     publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "*.bw"
 
     input:
@@ -555,13 +555,54 @@ process bedtools_normalized_bigwig {
     """
  }
 
+
+/*
+ *STEP X - Create BedGraph and BigWig files
+ */
+
+process dreg_prep {
+    validExitStatus 0,143
+    errorStrategy 'ignore'
+    tag "$name"
+    memory '30 GB'
+    time '3h'
+    queue 'long'
+    publishDir "${params.outdir}/dreg_input/", mode: 'copy', pattern: "*.bw"
+
+    input:
+    set val(name), file(bam_file) from sorted_bams_for_dreg_prep
+    file(chrom_sizes) from chrom_sizes
+
+    output:
+    set val(name), file("*.bw") into dreg_bw_ch
+
+    script:
+    """
+    module load bedtools/2.25.0
+
+    echo "Creating BigWigs suitable as inputs to dREG"
+
+    bedtools bamtobed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
+    awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' > ${name}.dreg.bed
+
+    bedtools genomecov -bg -i ${name}.dreg.bed -g ${chrom_sizes} -strand + > ${name}.pos.bedGraph
+    sortBed -i ${name}.pos.bedGraph > ${name}.pos.sort.bedGraph
+    bedtools genomecov -bg -i ${name}.dreg.bed -g ${chrom_sizes} -strand - | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' > ${name}.neg.bedGraph
+    sortBed -i ${name}.neg.bedGraph > ${name}.neg.sort.bedGraph
+
+    ${params.path_to_bedGraphToBigWig} ${name}.pos.sort.bedGraph ${chrom_sizes} ${name}.pos.bw
+    ${params.path_to_bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
+    """
+ }
+
+
 process bedtools_normalized_bedgraph {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
     cpus 16
     memory '100 GB'
-    time '96h'
+    time '24h'
     publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "*.bedGraph"
 
     input:
@@ -614,7 +655,7 @@ process bedtools_bedgraph {
     tag "$name"
     cpus 16
     memory '100 GB'
-    time '96h'
+    time '24h'
     publishDir "${params.outdir}/bedtools/", mode: 'copy', pattern: "*.bedGraph"
 
     input:
