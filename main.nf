@@ -300,7 +300,7 @@ process fastqc {
     set val(name), file(reads) from fastq_reads_for_qc.mix(fastq_reads_for_qc_from_sra)
 
     output:
-    file "*_fastqc.{zip,html}" into fastqc_results
+    file "*_fastqc.{zip,html,txt}" into fastqc_results
 
     script:
     """
@@ -308,6 +308,7 @@ process fastqc {
     echo ${name}
 
     fastqc $reads
+		extract_fastqc_stats.sh --srr=${name} > ${name}_stats_fastqc.txt
     """
 }
 
@@ -359,14 +360,14 @@ process bbduk {
 
 process fastqc_trimmed {
     tag "$prefix"
-    publishDir "${params.outdir}/qc/", mode: 'copy',
+    publishDir "${params.outdir}/qc/", mode: 'copy', 
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
     file(trimmed_reads) from trimmed_reads_for_fastqc
 
     output:
-    file "*_fastqc.{zip,html}" into trimmed_fastqc_results
+    file "*_fastqc.{zip,html,txt}" into trimmed_fastqc_results
 
     script:
     prefix = trimmed_reads.baseName
@@ -375,6 +376,7 @@ process fastqc_trimmed {
     echo ${prefix}
 
     fastqc $trimmed_reads
+		extract_fastqc_stats.sh --srr=${prefix} > ${prefix}_stats_fastqc.txt
     """
 }
 
