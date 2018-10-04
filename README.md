@@ -12,7 +12,7 @@ Install Nextflow:
 
     $ curl -s https://get.nextflow.io | bash
 
-First and foremost, edit `conf/fiji.config` to ensure the proper paths and email address are set. variable names should hopefully be self-explanatory. Currently the easiest way to process a bunch of SRAs is to put them all in a certain directory and provide the path to this in `sra_dir_pattern`. You will also want to provide the `outdir` path and a `keyword` which typically will be (<AUTHOR_LAST> \<YEAR>). Then:
+First and foremost, edit `conf/fiji.config` to ensure the proper paths and email address are set. variable names should hopefully be self-explanatory. Currently the easiest way to process a bunch of SRAs is to put them all in a certain directory and provide the path to this in `sra_dir_pattern`. You will also want to provide the `outdir` path and a `keyword` which typically will be (<AUTHOR_LAST><YEAR>). Then:
 
     $ nextflow run main.nf  -profile fiji --singleEnd
     
@@ -22,7 +22,7 @@ If anything went wrong, you don't need to restart the pipeline from scratch. Ins
 
     $ nextflow run main.nf  -profile fiji -resume
 
-The results outputs are currently directed to `/scratch/Shares/dowell/NascentDB/` which will be sorted by year and keyword (<AUTHOR_LAST> \<YEAR>). The temp files are output to `/scratch/Shares/dowell/NascentDB/nextflow/`.
+The results outputs are currently directed to `/scratch/Shares/dowell/NascentDB/` which will be sorted by year and keyword (<AUTHOR_LAST><YEAR>). The temp files are output to `/scratch/Shares/dowell/NascentDB/nextflow/`.
 
 MultiQC will also run by default upon completion of all previous steps. However, in its current configuration, you must have installed MultiQC to your Fiji user home by running:
 
