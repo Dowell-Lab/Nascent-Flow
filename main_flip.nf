@@ -23,8 +23,6 @@ def helpMessage() {
     The typical command for running the pipeline is as follows:
 
     nextflow run main.nf -profile fiji
-    
-    You will also need to specify --singleEnd at the end of the above command if your data is not paired.
 
     """.stripIndent()
 }
@@ -48,7 +46,6 @@ multiqc_config = file(params.multiqc_config)
 output_docs = file("$baseDir/docs/output.md")
 
 // Validate inputs
-
 if ( params.genome ){
     genome = file(params.genome)
     if( !genome.exists() ) exit 1, "Genome directory not found: ${params.genome}"
@@ -59,7 +56,7 @@ if ( params.genome ){
 //     bt2_indices = Channel.fromPath( "${params.bt2index}*.bt2" ).toList()
 //     // if( !bt2_indices[0].exists() ) exit 1, "Reference genome Bowtie 2 index not found: ${params.bt2index}"
 // }
-
+//
  if ( params.chrom_sizes ){
      chrom_sizes = file(params.chrom_sizes)
      if( !chrom_sizes.exists() ) exit 1, "Genome chrom sizes file not found: ${params.chrom_sizes}"
@@ -171,7 +168,7 @@ summary['Script dir']       = workflow.projectDir
 summary['Config Profile']   = workflow.profile
 if(params.email) summary['E-mail Address'] = params.email
 log.info summary.collect { k,v -> "${k.padRight(15)}: $v" }.join("\n")
-log.info "======================================================="
+log.info "========================================="
 
 // Check that Nextflow version is up to date enough
 // try / throw / catch works for NF versions < 0.25 when this was implemented
@@ -219,7 +216,7 @@ process get_software_versions {
     hisat2 --version > v_hisat2.txt
     samtools --version > v_samtools.txt
     fastq-dump --version > v_fastq-dump.txt
-    #preseq --version > v_preseq.txt
+    preseq --version > v_preseq.txt
     echo "2.0.3" > v_preseq.txt
 
     # Can't call this before running MultiQC or it breaks it
@@ -236,19 +233,17 @@ process get_software_versions {
     """
 }
 
-/*
- * Step 0.1 -- get fastq files from downloaded sras
- */
 
 process sra_dump {
-//    publishDir "${params.outdir}/${params.keyword}/fastq/", mode: 'copy', pattern: '*.fastq'
+    publishDir "${params.outdir}/${params.keyword}/fastq/", mode: 'copy', pattern: '*.fastq'
     tag "$fname"
 
     input:
     set val(fname), file(reads) from read_files_sra
 
     output:
-    set val(fname), file("${fname}.fastq") into fastq_reads_reversecomp_sra, fastq_reads_qc, fastq_reads_trim, fastq_reads_gzip
+    set val(fname), file("${fname}.fastq") into fastq_reads_for_reverse_complement_from_sra
+    set val(fname), file("${fname}.fastq") into fastq_reads_for_qc_from_sra
 
     script:
     // TEST THIS LATER, SHOULD BE FASTER AND DEFAULTS TO --split-3
@@ -269,28 +264,28 @@ process sra_dump {
  * STEP 1a - Produces reverse complement of each short-read seqeuence
  */
 
-//process reverse_complement {
-//    validExitStatus 0,1
-//    tag "$name"
-//    publishDir "${params.outdir}/${params.keyword}/fastq/", mode: 'copy', pattern: '*.flip.fastq'
-//
-//    input:
-//    set val(name), file(reads) from fastq_reads_for_reverse_complement.mix(fastq_reads_reversecomp_sra)
-//
-//    output:
-//    set val(name), file("*.flip.fastq") into flipped_reads
-//
-//    script:
-//    """
-//    module load fastx-toolkit/0.0.13
-//    echo ${name}
-//
-//    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement \
-//        -Q33 \
-//        -i ${reads} \
-//        -o ${name}.flip.fastq
-//    """
-//}
+process reverse_complement {
+    validExitStatus 0,1
+    tag "$name"
+    publishDir "${params.outdir}/${params.keyword}/fastq/", mode: 'copy', pattern: '*.flip.fastq'
+
+    input:
+    set val(name), file(reads) from fastq_reads_for_reverse_complement.mix(fastq_reads_for_reverse_complement_from_sra)
+
+    output:
+    set val(name), file("*.flip.fastq") into flipped_reads_ch
+
+    script:
+    """
+    module load fastx-toolkit/0.0.13
+    echo ${name}
+
+    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement \
+        -Q33 \
+        -i ${reads} \
+        -o ${name}.flip.fastq
+    """
+}
 
 
 /*
@@ -299,12 +294,11 @@ process sra_dump {
 
 process fastqc {
     tag "$name"
-    memory '8 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/fastqc/", mode: 'copy',
+    publishDir "${params.outdir}/${params.keyword}/qc/FastQC/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
-    set val(name), file(reads) from fastq_reads_for_qc.mix(fastq_reads_qc)
+    set val(name), file(reads) from fastq_reads_for_qc.mix(fastq_reads_for_qc_from_sra)
 
     output:
     file "*_fastqc.{zip,html,txt}" into fastqc_results
@@ -319,27 +313,6 @@ process fastqc {
     """
 }
 
-/*
- *STEP 1c - Compress fastq files for storage
- */
-
-process gzip_fastq {
-    tag "$name"
-    memory '4 GB'
-    publishDir "${params.outdir}/${params.keyword}/fastq", mode: 'copy', pattern: "*.gz"
-
-    input:
-    set val(name), file(fastq_reads) from fastq_reads_gzip
-
-    output:
-    set val(name), file("*.gz") into compressed_fastq
-
-    script:
-    """
-    gzip -c ${name}.fastq > ${name}.fastq.gz
-    """
- }
-
 
 /*
  * STEP 2 - Trimming
@@ -350,20 +323,17 @@ process bbduk {
     tag "$name"
     cpus 16
     memory '20 GB'
-    publishDir "${params.outdir}/${params.keyword}/trimmed", mode: 'copy', pattern: "*.trim.fastq"
-    publishDir "${params.outdir}/${params.keyword}/qc/trimstats", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/${params.keyword}/trimmed/", mode: 'copy', pattern: "${name}.trim.fastq",
+    saveAs: {filename -> filename.indexOf(".txt") > 0 ? "stats/$filename" : "$filename"}
 
     input:
-    set val(name), file(fastq) from fastq_reads_trim
+    set val(name), file(flipped_reads) from flipped_reads
 
     output:
-    file "${name}.trim.fastq" into trimmed_reads_fastqc, trimmed_reads_hisat2
-    file "*.txt" into trim_stats
+    file "${name}.trim.fastq" into trimmed_reads_for_fastqc
+    file "${name}.trim.fastq" into trimmed_reads_for_hisat2
     
-/* 
- * Options tpe and tbo are specifically for paired end, however have no effect on single-end so these are included by default
- * Option minlen=25 will overtrim slightly, but is recommended to take care of leftover adapter from the cicularitation protocol
- */
+// options tpe and tbo are specifically for paired end, however have no effect on single-end so these are included by default
     
     script:
     """
@@ -373,7 +343,7 @@ process bbduk {
     bbduk.sh -Xmx20g \
               t=16 \
               overwrite= t \
-              in=${fastq} \
+              in=${flipped_reads} \
               out=${name}.trim.fastq \
               ref=${bbmap_adapters} \
               ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
@@ -386,18 +356,21 @@ process bbduk {
     """
 }
 
+// trimmed_reads_ch
+//    .into {trimmed_reads_for_fastqc; trimmed_reads_for_hisat2}
+
+
 /*
- * STEP 3 - Trimmed FastQC
+ * STEP 2 - Trimmed FastQC
  */
 
 process fastqc_trimmed {
     tag "$prefix"
-    memory '4 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/fastqc/", mode: 'copy', 
+    publishDir "${params.outdir}/${params.keyword}/qc/FastQC/", mode: 'copy', 
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
-    file(trimmed_reads) from trimmed_reads_fastqc
+    file(trimmed_reads) from trimmed_reads_for_fastqc
 
     output:
     file "*_fastqc.{zip,html,txt}" into trimmed_fastqc_results
@@ -415,9 +388,8 @@ process fastqc_trimmed {
 
 
 /*
- * STEP 4 - Map reads to reference genome
+ * STEP 3 - Map reads to reference genome
  */
-
 process hisat2 {
     // NOTE: this is poorly written and sends output there even in
     // successful (exit code 0) termination, so we have to ignore errors for
@@ -426,15 +398,16 @@ process hisat2 {
 
     tag "$prefix"
     cpus 32
-    memory '100 GB'
+    publishDir "${params.outdir}/${params.keyword}/mapped/", mode: 'copy', pattern: "${prefix}.trim.sam"
+// TODO: Copy this .sam.wc file as well
 
     input:
     file(indices) from hisat2_indices
     val(indices_path) from hisat2_indices
-    file(trimmed_reads) from trimmed_reads_hisat2
+    file(trimmed_reads) from trimmed_reads_for_hisat2
 
     output:
-    set val(prefix), file("${prefix}.sam") into hisat2_sam
+    set val(prefix), file("${prefix}.sam") into mapped_sam_file_ch
 
     script:
     prefix = trimmed_reads.baseName
@@ -448,64 +421,63 @@ process hisat2 {
             -x ${indices_path}\
             -U ${trimmed_reads} \
             > ${prefix}.sam
+
+    wc -l ${prefix}.sam > ${prefix}.sam.wc
     """
 }
 
 
 /*
- * STEP 5 - Convert to BAM format and sort
+ * STEP 4 - Convert to BAM format and sort
  */
 
 process samtools {
     tag "$name"
-    memory '100 GB'
-    cpus 8
+    memory '200 GB'
     time '16h'
-    publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam"
-    publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam.bai"
-    publishDir "${params.outdir}/${params.keyword}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.flagstat"
+    publishDir "${params.outdir}/${params.keyword}/mapped/bams/", mode: 'copy', pattern: "${name}.trim.sorted.*"
 
     input:
-    set val(name), file(mapped_sam) from hisat2_sam
+    set val(name), file(mapped_sam) from mapped_sam_file_ch
 
     output:
-    set val(name), file("${name}.sorted.bam") into sorted_bam
-    set val(name), file("${name}.sorted.bam.bai") into sorted_bam_indices
-    set val(name), file("${name}.sorted.bam.flagstat") into bam_flagstat
+    set val(name), file("${name}.sorted.bam") into sorted_bam_ch
+    file("${name}.sorted.bam.bai") into sorted_bam_indices
+    set val(name), file("${name}.sorted.bam.flagstat") into flagstat_ch
 
     script:
     """
     module load samtools/1.8
 
-    samtools view -@ 8 -bS -o ${name}.bam ${mapped_sam}
-    samtools sort -@ 8 ${name}.bam > ${name}.sorted.bam
+    samtools view -S -b -o ${name}.bam ${mapped_sam}
+    samtools flagstat ${name}.bam > ${name}.bam.flagstat
+    samtools sort -m100G ${name}.bam > ${name}.sorted.bam
     samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
     samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
     """
 }
 
-sorted_bam
+sorted_bam_ch
    .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_bedtools_normalized_bigwig; sorted_bams_for_bedtools_normalized_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup}
 
 sorted_bam_indices
     .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indices_for_bedtools_normalized_bigwig; sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc}
 
 /*
- *STEP 6a - Plot the estimated complexity of a sample, and estimate future yields
+ *STEP 5 - Plot the estimated complexity of a sample, and estimate future yields
  *         for complexity if the sample is sequenced at higher read depths.
  */
 
 process preseq {
     tag "$name"
-    memory '8 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/preseq/", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/${params.keyword}/qc/preseq/", mode: 'copy', pattern: "${name}.*.txt"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_preseq
     file(bam_indices) from sorted_bam_indices_for_preseq
 
     output:
-    file("*.txt") into preseq_results
+    file("${name}.lc_extrap.txt") into preseq_ch
 
     script:
     """
@@ -513,7 +485,6 @@ process preseq {
 
     preseq c_curve -B -o ${name}.c_curve.txt \
            ${bam_file}
-           
     preseq lc_extrap -B -o ${name}.lc_extrap.txt \
            ${bam_file}
     """
@@ -521,34 +492,19 @@ process preseq {
 
 
 /*
- *STEP 6b - Analyze read distributions using RSeQC
+ *STEP 5 - Analyze read distributions using RSeQC
  */
 
 process rseqc {
     tag "$name"
-    memory '8 GB'
-    time '4h'
-    publishDir "${params.outdir}/${params.keyword}/qc/rseqc" , mode: 'copy',
-        saveAs: {filename ->
-                 if (filename.indexOf("infer_experiment.txt") > 0)              "infer_experiment/$filename"
-            else if (filename.indexOf("read_distribution.txt") > 0)             "read_distribution/$filename"
-            else if (filename.indexOf("read_duplication.DupRate_plot.pdf") > 0) "read_duplication/$filename"
-            else if (filename.indexOf("read_duplication.DupRate_plot.r") > 0)   "read_duplication/rscripts/$filename"
-            else if (filename.indexOf("read_duplication.pos.DupRate.xls") > 0)  "read_duplication/dup_pos/$filename"
-            else if (filename.indexOf("read_duplication.seq.DupRate.xls") > 0)  "read_duplication/dup_seq/$filename"
-            else if (filename.indexOf("RPKM_saturation.eRPKM.xls") > 0)         "RPKM_saturation/rpkm/$filename"
-            else if (filename.indexOf("RPKM_saturation.rawCount.xls") > 0)      "RPKM_saturation/counts/$filename"
-            else if (filename.indexOf("RPKM_saturation.saturation.pdf") > 0)    "RPKM_saturation/$filename"
-            else if (filename.indexOf("RPKM_saturation.saturation.r") > 0)      "RPKM_saturation/rscripts/$filename"
-            else filename
-        }
+    publishDir "${params.outdir}/${params.keyword}/qc/rseqc/", mode: 'copy', pattern: "${name}.read_dist.txt"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_rseqc
     file(bam_indices) from sorted_bam_indices_for_rseqc
 
     output:
-    file "*.{txt,pdf,r,xls}" into rseqc_results
+    file("${name}.read_dist.txt") into rseqc_ch
 
     script:
     """
@@ -557,58 +513,46 @@ process rseqc {
     read_distribution.py -i ${bam_file} \
                          -r ${genome_refseq} \
                          > ${name}.read_dist.txt
-                         
-    read_duplication.py -i ${bam_file} \
-                        -o ${name}.read_duplication
-                        
-    infer_experiment.py -i ${bam_file} \
-                        -r ${genome_refseq} \
-                        > ${name}.infer_experiment.txt
     """
  }
 
-
-
 /*
- *STEP 6c - Analyze coverage using pileup.sh
+ *STEP 5 - Analyze coverage using pileup.sh
  */
 
 process pileup {
     tag "$name"
-    memory '8 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/pileup", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/${params.keyword}/qc/pileup/", mode: 'copy', pattern: "${name}.coverage.stats.txt"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_pileup
     file(bam_indices) from sorted_bam_indicies_for_pileup
 
     output:
-    file("*.txt") into pileup_results
+    file("${name}.coverage.stats.txt") into pileup_ch
 
     script:
     """
     module load bbmap/38.05
-    module load samtools/1.8
     
     pileup.sh in=${bam_file} \
-              out=${name}.coverage.stats.txt
-              hist=${name}.coverage.hist.txt
+              out=${name}.coverage.stats.txt    
     """
  }
 
 
 /*
- *STEP 7a - Create Normalized BigWig files for nascent database v2.0
+ *STEP 6 - Create BedGraph and BigWig files
  */
 
-process deeptools_normalized_bigwig {
+process bedtools_normalized_bigwig {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
     cpus 16
-    memory '50 GB'
-    time '24h'
-    publishDir "${params.outdir}/${params.keyword}/mapped/bigwigs", mode: 'copy', pattern: "*.bw"
+    memory '100 GB'
+    time '8h'
+    publishDir "${params.outdir}/${params.keyword}/mapped/bigwigs/", mode: 'copy', pattern: "*.bw"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_normalized_bigwig
@@ -646,7 +590,7 @@ process deeptools_normalized_bigwig {
 
 
 /*
- *STEP 7b - Create bedGraphs and bigwigs for dREG
+ *STEP 7 - Create BedGraph and BigWig files
  */
 
 process dreg_prep {
@@ -656,14 +600,14 @@ process dreg_prep {
     memory '30 GB'
     time '3h'
     queue 'long'
-    publishDir "${params.outdir}/${params.keyword}/mapped/dreg_input", mode: 'copy', pattern: "*.bw"
+    publishDir "${params.outdir}/${params.keyword}/mapped/dreg_input/", mode: 'copy', pattern: "*.bw"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_dreg_prep
     file(chrom_sizes) from chrom_sizes
 
     output:
-        set val(name), file("*.bw") into dreg_bw_ch
+    set val(name), file("*.bw") into dreg_bw_ch
 
     script:
     """
@@ -673,37 +617,26 @@ process dreg_prep {
 
     bedtools bamtobed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
     awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' > ${name}.dreg.bed
-    sort -k1,1 ${name}.dreg.bed > ${name}.dreg.sort.bed
-    
-    echo positive strand processed to bedGraph
 
-    bedtools genomecov -bg -i ${name}.dreg.sort.bed -g ${chrom_sizes} -strand + > ${name}.pos.bedGraph
+    bedtools genomecov -bg -i ${name}.dreg.bed -g ${chrom_sizes} -strand + > ${name}.pos.bedGraph
     sortBed -i ${name}.pos.bedGraph > ${name}.pos.sort.bedGraph
-    bedtools genomecov -bg -i ${name}.dreg.sort.bed -g ${chrom_sizes} -strand - \
-    | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' > ${name}.neg.bedGraph
+    bedtools genomecov -bg -i ${name}.dreg.bed -g ${chrom_sizes} -strand - | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' > ${name}.neg.bedGraph
     sortBed -i ${name}.neg.bedGraph > ${name}.neg.sort.bedGraph
-    
-    echo negative strand processed to bedGraph
 
     ${params.path_to_bedGraphToBigWig} ${name}.pos.sort.bedGraph ${chrom_sizes} ${name}.pos.bw
     ${params.path_to_bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
-    
-    echo bedGraph to bigwig done
     """
  }
 
-/*
- *STEP 7c - Create normalized bedGraphs using deepTools for visualization and conversion to tdfs
- */
 
-process deeptools_normalized_bedgraph {
+process bedtools_normalized_bedgraph {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
     cpus 16
     memory '100 GB'
-    time '24h'
-    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/deeptools/", mode: 'copy', pattern: "${name}.rpkm.bedGraph"
+    time '8h'
+    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/bedtools/", mode: 'copy', pattern: "*rpkm.bedGraph"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_normalized_bedgraph
@@ -749,24 +682,20 @@ process deeptools_normalized_bedgraph {
     """
  }
 
-/*
- *STEP 7d - Create non-normalzied bedGraphs for analysis using FStitch/Tfit
- */
-
 process bedtools_bedgraph {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
-    memory '20 GB'
-    time '4h'
-    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/bedtools", mode: 'copy', pattern: "*.bedGraph"
+    memory '50 GB'
+    time '6h'
+    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/bedtools/", mode: 'copy', pattern: "*.bedGraph"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_bedgraph
     file(bam_indices) from sorted_bam_indices_for_bedtools_bedgraph
 
     output:
-    set val(name), file("*.bedGraph") into non_normalized_bedgraph_ch
+    set val(name), file("${name}.bedGraph") into bed_ch
 
     script:
     """
@@ -777,28 +706,28 @@ process bedtools_bedgraph {
                      -strand + \
                      -g hg38 \
                      -ibam ${bam_file} \
-                     > ${name}.bt.pos.bedGraph
+                     > ${name}.bt.trim.pos.bedGraph
 
     genomeCoverageBed \
                      -bg \
                      -strand - \
                      -g hg38 \
                      -ibam ${bam_file} \
-                     > ${name}.tmp.bt.neg.bedGraph
+                     > ${name}.tmp.bt.trim.neg.bedGraph
                      
-     awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.bt.neg.bedGraph \
-        > ${name}.bt.neg.bedGraph
-        rm ${name}.tmp.bt.neg.bedGraph
+     awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.bt.trim.neg.bedGraph \
+        > ${name}.neg.bt.trim.bedGraph
+        rm ${name}.tmp.bt.trim.neg.bedGraph
 
-    cat ${name}.bt.pos.bedGraph \
-        ${name}.bt.neg.bedGraph \
-        > ${name}.bt.unsorted.bedGraph
+    cat ${name}.bt.trim.pos.bedGraph \
+                 ${name}.bt.trim.neg.bedGraph \
+                 > ${name}.bt.trim.unsorted.bedGraph
 
     sortBed \
-             -i ${name}.bt.unsorted.bedGraph \
-             > ${name}.bt.bedGraph
+             -i ${name}.bt.trim.unsorted.bedGraph \
+             > ${name}.bt.trim.bedGraph
 
-    rm ${name}.bt.unsorted.bedGraph
+    rm ${name}.bt.trim.unsorted.bedGraph
     """
  }
 
@@ -807,23 +736,22 @@ process bedtools_bedgraph {
 //     .set {bed_and_flagset_ch}
 
 /*
- *STEP 8 - IGV Tools : generate tdfs for optimal visualization in Integrative Genomics Viewer (IGV)
+ *STEP X - IGV Tools
  */
 
 process igvtools {
     tag "$name"
-    memory '100 GB'
     // This often blows up due to a ceiling in memory usage, so we can ignore
     // and re-run later as it's non-essential.
     errorStrategy 'ignore'
-    publishDir "${params.outdir}/${params.keyword}/mapped/tdfs", mode: 'copy', pattern: "*.tdf"
+    publishDir "${params.outdir}/${params.keyword}/mapped/tdfs/", mode: 'copy', pattern: "*.tdf"
 
     input:
     set val(name), file(normalized_bed) from normalized_bed_ch
     file(chrom_sizes) from chrom_sizes
 
     output:
-    set val(name), file("*.tdf") into tiled_data_ch
+    set val(name), file("${name}.rpkm.tdf") into tiled_data_ch
 
     script:
     """
@@ -834,21 +762,18 @@ process igvtools {
  }
 
 
-
 /*
- * STEP 9 - MultiQC
+ * STEP 8 - MultiQC
  */
 process multiqc {
-    publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy'
+    publishDir "${params.outdir}/qc/", mode: 'copy'
 
     input:
     file multiqc_config
-    file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
-    file ('qc/fastqc/*') from trimmed_fastqc_results.collect()
-    file ('qc/trimstats/*') from trim_stats.collect()
-    file ('qc/mapstats/*') from bam_flagstat.collect()
-    file ('qc/rseqc/*') from rseqc_results.collect()
-    file ('qc/preseq/*') from preseq_results.collect()
+    file ('FastQC/*') from fastqc_results.collect()
+    file("${name}.sorted.bam.flagstat") from flagstat_ch.collect()
+    file ('qc/rseqc/*') from rseqc_ch.collect()
+    file ('qc/preseq/*') from preseq_ch.collect()
     file ('software_versions/*') from software_versions_yaml
 
     output:
@@ -858,21 +783,17 @@ process multiqc {
     script:
     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
     rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
-    
-//TO DO : Need to build a new multiqc container for the newest version    
-    
     """
-    module load python/3.6.3
-    export PATH=~/.local/bin:$PATH
+    module load python/2.7.14
 
-    multiqc . -f $rtitle $rfilename --config $multiqc_config
+    multiqc -f $rtitle $rfilename --config $multiqc_config .
     """
 }
 
 
 
 /*
- * STEP 10 - Output Description HTML
+ * STEP 9 - Output Description HTML
  *
 *
 *process output_documentation {
@@ -958,7 +879,7 @@ workflow.onComplete {
     }
 
     // Write summary e-mail HTML to a file
-    def output_d = new File( "${params.outdir}/${params.keyword}/pipeline_info/" )
+    def output_d = new File( "${params.outdir}/doc/" )
     if( !output_d.exists() ) {
       output_d.mkdirs()
     }

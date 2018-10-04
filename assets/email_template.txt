@@ -1,13 +1,13 @@
 ========================================
- NCBI-Hackathons/ATACFlow v${version}
+ NascentFlow v${version}
 ========================================
 Run Name: $runName
 
 <% if (success){
-    out << "## NCBI-Hackathons/ATACFlow execution completed successfully! ##"
+    out << "## NascentFlow execution completed successfully! ##"
 } else {
     out << """####################################################
-## NCBI-Hackathons/ATACFlow execution completed unsuccessfully! ##
+## NascentFlow execution completed unsuccessfully! ##
 ####################################################
 The exit status of the task that caused the workflow execution to fail was: $exitStatus.
 The full error message was:
@@ -19,7 +19,7 @@ ${errorReport}
 
 <% if (!success){
     out << """####################################################
-## NCBI-Hackathons/ATACFlow execution completed unsuccessfully! ##
+## NascentFlow execution completed unsuccessfully! ##
 ####################################################
 The exit status of the task that caused the workflow execution to fail was: $exitStatus.
 The full error message was:
@@ -27,7 +27,7 @@ The full error message was:
 ${errorReport}
 """
 } else {
-    out << "## NCBI-Hackathons/ATACFlow execution completed successfully! ##"
+    out << "## NascentFlow execution completed successfully! ##"
 }
 %>
 
@@ -47,5 +47,5 @@ Pipeline Configuration:
 <% out << summary.collect{ k,v -> " - $k: $v" }.join("\n") %>
 
 --
-NCBI-Hackathons/ATACFlow
-https://github.com/NCBI-Hackathons/ATACFlow
+NascentFlow
+https://biof-git.colorado.edu/dowelllab/GRO-seq-workflow
