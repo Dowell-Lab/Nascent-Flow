@@ -839,7 +839,8 @@ process igvtools {
  * STEP 9 - MultiQC
  */
 process multiqc {
-    publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy'
+    publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy', pattern: "*multiqc_report.html"
+    publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy', pattern: "*_data"
 
     input:
     file multiqc_config
