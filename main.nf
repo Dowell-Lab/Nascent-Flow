@@ -350,13 +350,14 @@ process bbduk {
     tag "$name"
     cpus 16
     memory '20 GB'
-    publishDir "${params.outdir}/${params.keyword}/trimmed", mode: 'copy', pattern: "*.trim.fastq"
+    publishDir "${params.outdir}/${params.keyword}/trimmed", mode: 'copy', pattern: "*.trim.fastq.gz"
     publishDir "${params.outdir}/${params.keyword}/qc/trimstats", mode: 'copy', pattern: "*.txt"
 
     input:
     set val(name), file(fastq) from fastq_reads_trim
 
     output:
+    file "${name}.trim.fastq.gz" into trimmed_reads_compressed
     file "${name}.trim.fastq" into trimmed_reads_fastqc, trimmed_reads_hisat2
     file "*.txt" into trim_stats
     
@@ -383,6 +384,8 @@ process bbduk {
               stats=${name}.trimstats.txt \
               refstats=${name}.refstats.txt \
               ehist=${name}.ehist.txt
+              
+    gzip -c ${name}.trim.fastq > ${name}.trim.fastq.gz
     """
 }
 
@@ -469,8 +472,8 @@ process samtools {
     set val(name), file(mapped_sam) from hisat2_sam
 
     output:
-    set val(name), file("${name}.sorted.bam") into sorted_bam
-    set val(name), file("${name}.sorted.bam.bai") into sorted_bam_indices
+    set val(name), file("${name}.sorted.bam") into sorted_bam_ch
+    set val(name), file("${name}.sorted.bam.bai") into sorted_bam_indices_ch
     set val(name), file("${name}.sorted.bam.flagstat") into bam_flagstat
 
     script:
@@ -484,10 +487,10 @@ process samtools {
     """
 }
 
-sorted_bam
+sorted_bam_ch
    .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_bedtools_normalized_bigwig; sorted_bams_for_bedtools_normalized_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup}
 
-sorted_bam_indices
+sorted_bam_indices_ch
     .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indices_for_bedtools_normalized_bigwig; sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc}
 
 /*
@@ -575,7 +578,6 @@ process rseqc {
 
 process pileup {
     tag "$name"
-    memory '8 GB'
     publishDir "${params.outdir}/${params.keyword}/qc/pileup", mode: 'copy', pattern: "*.txt"
 
     input:
@@ -590,8 +592,9 @@ process pileup {
     module load bbmap/38.05
     module load samtools/1.8
     
-    pileup.sh in=${bam_file} \
-              out=${name}.coverage.stats.txt
+    pileup.sh -Xmx20g \
+              in=${bam_file} \
+              out=${name}.coverage.stats.txt \
               hist=${name}.coverage.hist.txt
     """
  }
@@ -839,7 +842,9 @@ process igvtools {
  * STEP 9 - MultiQC
  */
 process multiqc {
-    publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy', pattern: "*multiqc_report.html"
+    validExitStatus 0,1,143
+    errorStrategy 'ignore'
+    publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
     publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy', pattern: "*_data"
 
     input:
@@ -854,7 +859,7 @@ process multiqc {
 
     output:
     file "*multiqc_report.html" into multiqc_report
-    file "*_data"
+    file "*_data" into multiqc_report_files
 
     script:
     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
