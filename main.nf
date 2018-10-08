@@ -500,7 +500,7 @@ sorted_bam_indices_ch
 
 process preseq {
     tag "$name"
-    memory '8 GB'
+    memory '4 GB'
     publishDir "${params.outdir}/${params.keyword}/qc/preseq/", mode: 'copy', pattern: "*.txt"
 
     input:
@@ -530,7 +530,7 @@ process preseq {
 process rseqc {
     tag "$name"
     memory '8 GB'
-    time '4h'
+    time '2h'
     publishDir "${params.outdir}/${params.keyword}/qc/rseqc" , mode: 'copy',
         saveAs: {filename ->
                  if (filename.indexOf("infer_experiment.txt") > 0)              "infer_experiment/$filename"
@@ -578,6 +578,7 @@ process rseqc {
 
 process pileup {
     tag "$name"
+    memory '50 GB'
     publishDir "${params.outdir}/${params.keyword}/qc/pileup", mode: 'copy', pattern: "*.txt"
 
     input:
@@ -725,7 +726,7 @@ process deeptools_normalized_bedgraph {
     singularity exec -H ${params.singularity_home} ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
-                --filterRNAstrand forward \
+                --filterRNAstrand reverse \
                 --normalizeUsing RPKM \
                 --effectiveGenomeSize ${effective_genome_size} \
                 -of bedgraph \
@@ -734,7 +735,7 @@ process deeptools_normalized_bedgraph {
     singularity exec -H ${params.singularity_home} ${deep_container} \
     bamCoverage --numberOfProcessors 16 \
                 -b ${bam_file} \
-                --filterRNAstrand reverse \
+                --filterRNAstrand forward \
                 --normalizeUsing RPKM \
                 --effectiveGenomeSize ${effective_genome_size} \
                 -of bedgraph \
