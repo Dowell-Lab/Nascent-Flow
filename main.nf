@@ -63,7 +63,7 @@ def helpMessage() {
          -profile                      Configuration profile to use. <base, fiji>
     
     Options:
-        --singleEnd                    Specifies that the input files are single-ended (default is paired). 
+        --pairedEnd                    Specifies that the input files are single-ended (default is paired). 
     
     You will also need to specify --singleEnd at the end of the above command if your data is not paired.
 
@@ -179,7 +179,7 @@ if (params.sras) {
 
 if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
      Channel
-         .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
+         .fromFilePairs( params.reads, size: params.pairedEnd ? 1 : 2 )
          .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
          .into { read_files_fastqc; read_files_trimming }
  }
@@ -195,7 +195,7 @@ summary['Pipeline Version'] = params.version
 summary['Run Name']         = custom_runName ?: workflow.runName
 summary['Reads']            = params.reads
 summary['Genome Ref']       = params.genome
-summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
+summary['Data Type']        = params.pairedEnd ? 'Paired-End' : 'Single-End'
 summary['Max Memory']       = params.max_memory
 summary['Max CPUs']         = params.max_cpus
 summary['Max Time']         = params.max_time
