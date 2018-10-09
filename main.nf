@@ -63,7 +63,7 @@ def helpMessage() {
          -profile                      Configuration profile to use. <base, fiji>
     
     Options:
-        --pairedEnd                    Specifies that the input files are single-ended (default is paired). 
+        --pairedEnd                    Specifies that the input files are paired reads (default is single-end). 
     
     You will also need to specify --singleEnd at the end of the above command if your data is not paired.
 
