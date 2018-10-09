@@ -383,7 +383,7 @@ process gzip_fastq {
 
 
 /*
- * STEP 2 - Trimming
+ * STEP 2a - Trimming
  */
 
 process bbduk {
@@ -391,15 +391,13 @@ process bbduk {
     tag "$name"
     cpus 16
     memory '20 GB'
-    publishDir "${params.outdir}/${params.keyword}/trimmed", mode: 'copy', pattern: "*.trim.fastq.gz"
     publishDir "${params.outdir}/${params.keyword}/qc/trimstats", mode: 'copy', pattern: "*.txt"
 
     input:
     set val(name), file(fastq) from fastq_reads_trim
 
     output:
-    file "${name}.trim.fastq.gz" into trimmed_reads_compressed
-    file "${name}.trim.fastq" into trimmed_reads_fastqc, trimmed_reads_hisat2
+    file "${name}.trim.fastq" into trimmed_reads_fastqc, trimmed_reads_hisat2, trimmed_reads_gzip
     file "*.txt" into trim_stats
     
 /* 
@@ -425,10 +423,9 @@ process bbduk {
               stats=${name}.trimstats.txt \
               refstats=${name}.refstats.txt \
               ehist=${name}.ehist.txt
-              
-    gzip -c ${name}.trim.fastq > ${name}.trim.fastq.gz
     """
 }
+
 
 /*
  * STEP 2b - Trimmed FastQC
@@ -456,6 +453,28 @@ process fastqc_trimmed {
 		extract_fastqc_stats.sh --srr=${prefix} > ${prefix}_stats_fastqc.txt
     """
 }
+
+/*
+ *STEP 2c - Compress trimmed fastq files for storage
+ */
+
+process gzip_trimmed {
+    tag "$prefix"
+    memory '4 GB'
+    publishDir "${params.outdir}/${params.keyword}/trimmed", mode: 'copy'
+
+    input:
+    file(trimmed_reads) from trimmed_reads_gzip
+
+    output:
+    set val(prefix), file("*.gz") into trimmed_gzip
+
+    script:
+    prefix = trimmed_reads.baseName
+    """
+    gzip -c $trimmed_reads > ${prefix}.fastq.gz
+    """
+ }
 
 
 /*
