@@ -10,6 +10,41 @@
  Ignacio Tripodi <ignacio.tripodi@colorado.edu>
  Margaret Gruca <magr0763@colorado.edu>
 ----------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------
+
+Pipeline steps:
+
+    1. Pre-processing sra/fastq 
+        1a. SRA tools -- fasterq-dump sra to generate fastq file
+        1b. FastQC (pre-trim) -- perform pre-trim FastQC on fastq files
+        1c. Gzip fastq -- compress fastq files for storage
+        
+    2. Trimming
+        2a. BBDuk -- trim fastq files for quality and adapters
+        2b. FastQC (post-trim) -- perform post-trim FastQC on fastq files (ensure trimming performs as expected)
+        
+    3. Mapping w/ HISAT2 -- map to genome reference file
+    
+    4. SAMtools -- convert SAM file to BAM, index BAM, flagstat BAM
+    
+    5. Quality control
+        5a. preseq -- estimate library complexity
+        5b. RSeQC -- calculate genomic coverage relative to a reference file, infer experiement (single- v. paired-end), read duplication
+        5c. Pileup.sh : BBMap Suite -- genomic coverage by chromosome, GC content, pos/neg reads, intron/exon ratio
+        
+    6. Coverage files
+        6a. deepTools : normalized bigwigs
+        6b. BEDTools and kentUtils : 5' bigwigs for dREG
+        6c. deepTools : normalized bedgraphs
+        6d. BEDTools : non-normalized bedgraphs
+        
+    7. IGV Tools : bedGraph --> tdf
+    
+    8. MultiQC : generate QC report for pipeline
+    
+    9. Pipeline report
+    
+
 */
 
 
@@ -24,6 +59,12 @@ def helpMessage() {
 
     nextflow run main.nf -profile fiji
     
+    Mandatort arguments:
+         -profile                      Configuration profile to use. <base, fiji>
+    
+    Options:
+        --singleEnd                    Specifies that the input files are single-ended (default is paired). 
+    
     You will also need to specify --singleEnd at the end of the above command if your data is not paired.
 
     """.stripIndent()
@@ -34,6 +75,7 @@ def helpMessage() {
  */
 
 // Show help emssage
+params.help = false
 if (params.help){
     helpMessage()
     exit 0
@@ -219,7 +261,7 @@ process get_software_versions {
     hisat2 --version > v_hisat2.txt
     samtools --version > v_samtools.txt
     fastq-dump --version > v_fastq-dump.txt
-    #preseq --version > v_preseq.txt
+    preseq --version > v_preseq.txt
     echo "2.0.3" > v_preseq.txt
 
     # Can't call this before running MultiQC or it breaks it
@@ -237,11 +279,11 @@ process get_software_versions {
 }
 
 /*
- * Step 0.1 -- get fastq files from downloaded sras
+ * Step 1a -- get fastq files from downloaded sras
  */
 
 process sra_dump {
-//    publishDir "${params.outdir}/${params.keyword}/fastq/", mode: 'copy', pattern: '*.fastq'
+    cpus 8
     tag "$fname"
 
     input:
@@ -250,9 +292,17 @@ process sra_dump {
     output:
     set val(fname), file("${fname}.fastq") into fastq_reads_reversecomp_sra, fastq_reads_qc, fastq_reads_trim, fastq_reads_gzip
 
-    script:
-    // TEST THIS LATER, SHOULD BE FASTER AND DEFAULTS TO --split-3
-    // fasterq-dump ${sra_id}
+// Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8) and requires a temp directory which is set to the nextflow temp directory
+    
+//    script:       
+//    """
+//    module load sra/2.9.2
+//    echo ${fname}
+//
+//    fasterq-dump ${reads} -t workDir -e 8
+//    """
+    
+    script:       
     """
     module load sra/2.8.0
     echo ${fname}
@@ -390,7 +440,7 @@ process bbduk {
 }
 
 /*
- * STEP 3 - Trimmed FastQC
+ * STEP 2b - Trimmed FastQC
  */
 
 process fastqc_trimmed {
@@ -418,7 +468,7 @@ process fastqc_trimmed {
 
 
 /*
- * STEP 4 - Map reads to reference genome
+ * STEP 3 - Map reads to reference genome
  */
 
 process hisat2 {
@@ -456,7 +506,7 @@ process hisat2 {
 
 
 /*
- * STEP 5 - Convert to BAM format and sort
+ * STEP 4 - Convert to BAM format and sort
  */
 
 process samtools {
@@ -494,7 +544,7 @@ sorted_bam_indices_ch
     .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indices_for_bedtools_normalized_bigwig; sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc}
 
 /*
- *STEP 6a - Plot the estimated complexity of a sample, and estimate future yields
+ *STEP 5a - Plot the estimated complexity of a sample, and estimate future yields
  *         for complexity if the sample is sequenced at higher read depths.
  */
 
@@ -524,7 +574,7 @@ process preseq {
 
 
 /*
- *STEP 6b - Analyze read distributions using RSeQC
+ *STEP 5b - Analyze read distributions using RSeQC
  */
 
 process rseqc {
@@ -573,7 +623,7 @@ process rseqc {
 
 
 /*
- *STEP 6c - Analyze coverage using pileup.sh
+ *STEP 5c - Analyze coverage using pileup.sh
  */
 
 process pileup {
@@ -602,7 +652,7 @@ process pileup {
 
 
 /*
- *STEP 7a - Create Normalized BigWig files for nascent database v2.0
+ *STEP 6a - Create Normalized BigWig files for nascent database v2.0
  */
 
 process deeptools_normalized_bigwig {
@@ -650,7 +700,7 @@ process deeptools_normalized_bigwig {
 
 
 /*
- *STEP 7b - Create bedGraphs and bigwigs for dREG
+ *STEP 6b - Create bedGraphs and bigwigs for dREG
  */
 
 process dreg_prep {
@@ -697,7 +747,7 @@ process dreg_prep {
  }
 
 /*
- *STEP 7c - Create normalized bedGraphs using deepTools for visualization and conversion to tdfs
+ *STEP 6c - Create normalized bedGraphs using deepTools for visualization and conversion to tdfs
  */
 
 process deeptools_normalized_bedgraph {
@@ -754,7 +804,7 @@ process deeptools_normalized_bedgraph {
  }
 
 /*
- *STEP 7d - Create non-normalzied bedGraphs for analysis using FStitch/Tfit
+ *STEP 6d - Create non-normalzied bedGraphs for analysis using FStitch/Tfit
  */
 
 process bedtools_bedgraph {
@@ -811,7 +861,7 @@ process bedtools_bedgraph {
 //     .set {bed_and_flagset_ch}
 
 /*
- *STEP 8 - IGV Tools : generate tdfs for optimal visualization in Integrative Genomics Viewer (IGV)
+ *STEP 7 - IGV Tools : generate tdfs for optimal visualization in Integrative Genomics Viewer (IGV)
  */
 
 process igvtools {
@@ -840,7 +890,7 @@ process igvtools {
 
 
 /*
- * STEP 9 - MultiQC
+ * STEP 8 - MultiQC
  */
 process multiqc {
     validExitStatus 0,1,143
@@ -879,25 +929,25 @@ process multiqc {
 
 
 /*
- * STEP 10 - Output Description HTML
- *
-*
-*process output_documentation {
-*    tag "$prefix"
-*    publishDir "${params.outdir}/doc/", mode: 'copy'
-*
-*    input:
-*    file output_docs
-*
-*    output:
-*    file "results_description.html"
-*
-*    script:
-*    """
-*    markdown_to_html.r $output_docs results_description.html
-*    """
-*}
-
+ * STEP 9 - Output Description HTML
+ */
+//
+//process output_documentation {
+//    tag "$prefix"
+//    publishDir "${params.outdir}/${params.keyword}/pipeline_info/", mode: 'copy'
+//
+//    input:
+//    file output_docs
+//
+//    output:
+//    file "results_description.html"
+//
+//    script:
+//    """
+//    markdown_to_html.r $output_docs results_description.html
+//    """
+//}
+//
 
 
 /*
