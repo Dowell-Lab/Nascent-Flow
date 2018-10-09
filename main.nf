@@ -282,30 +282,23 @@ process get_software_versions {
 
 process sra_dump {
     cpus 8
-    tag "$fname"
+    tag "$prefix"
 
     input:
-    set val(fname), file(reads) from read_files_sra
+    set val(prefix), file(reads) from read_files_sra
 
     output:
-    set val(fname), file("${fname}.fastq") into fastq_reads_reversecomp_sra, fastq_reads_qc, fastq_reads_trim, fastq_reads_gzip
+    set val(prefix), file("${prefix}.fastq") into fastq_reads_reversecomp_sra, fastq_reads_qc, fastq_reads_trim, fastq_reads_gzip
 
 // Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8) and requires a temp directory which is set to the nextflow temp directory
     
-//    script:       
-//    """
-//    module load sra/2.9.2
-//    echo ${fname}
-//
-//    fasterq-dump ${reads} -t workDir -e 8
-//    """
-    
-    script:       
+    script:
+    prefix = reads.baseName
     """
-    module load sra/2.8.0
-    echo ${fname}
+    module load sra/2.9.2
+    echo ${prefix}
 
-    fastq-dump ${reads}
+    fasterq-dump ${prefix} -e 8
     """
 }
 

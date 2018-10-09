@@ -11,8 +11,11 @@ Clone this repository in your home directory:
 Install Nextflow:
 
     $ module load curl/7.49.1 (or set path to curl executable if installed locally)
-    
     $ curl -s https://get.nextflow.io | bash
+    
+If you are using Fiji, this will install nextflow to your home directory. As such, to run Nextflow, you will need to set the PATH to your home directory. Doing so as the following will set the PATH as a variable so you can still acess other paths (e.g. when you load modules) on Fiji without conflict:
+
+    $export PATH=~:$PATH
 
 First and foremost, edit `conf/fiji.config` to ensure the proper paths and email address are set. variable names should hopefully be self-explanatory. Currently the easiest way to process a bunch of SRAs is to put them all in a certain directory and provide the path to this in `sra_dir_pattern`. You will also want to provide the `outdir` path and a `keyword` which typically will be (\<AUTHOR_LAST>\<YEAR>). Then:
 
