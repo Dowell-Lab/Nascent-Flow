@@ -11,6 +11,7 @@ Clone this repository in your home directory:
 Install Nextflow:
 
     $ module load curl/7.49.1 (or set path to curl executable if installed locally)
+    
     $ curl -s https://get.nextflow.io | bash
 
 First and foremost, edit `conf/fiji.config` to ensure the proper paths and email address are set. variable names should hopefully be self-explanatory. Currently the easiest way to process a bunch of SRAs is to put them all in a certain directory and provide the path to this in `sra_dir_pattern`. You will also want to provide the `outdir` path and a `keyword` which typically will be (\<AUTHOR_LAST>\<YEAR>). Then:
