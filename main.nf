@@ -59,12 +59,17 @@ def helpMessage() {
 
     nextflow run main.nf -profile fiji
     
-    Mandatort arguments:
+    Mandatory arguments:
          -profile                      Configuration profile to use. <base, fiji>
     
     Options:
         --pairedEnd                    Specifies that the input files are paired reads (default is single-end).
-        --flip                         Takes the reverse complement of all sequences (necessary for some library preps) NOT YET FUNCTIONAL
+        --flip                         Takes the reverse complement of all sequences (necessary for some library preps).
+    
+    Save options:
+        --savefq                       Compresses and saves raw fastq reads.
+        --saveTrim                     Compresses and saves trimmed fastq reads.
+        --saveAll                      Compresses and saves all fastq reads.
 
     """.stripIndent()
 }
@@ -96,20 +101,10 @@ if ( params.genome ){
     if( !genome.exists() ) exit 1, "Genome directory not found: ${params.genome}"
 }
 
-// if ( params.bt2index ){
-//     bt2_index = file("${params.bt2index}.fa").baseName
-//     bt2_indices = Channel.fromPath( "${params.bt2index}*.bt2" ).toList()
-//     // if( !bt2_indices[0].exists() ) exit 1, "Reference genome Bowtie 2 index not found: ${params.bt2index}"
-// }
-
- if ( params.chrom_sizes ){
-     chrom_sizes = file(params.chrom_sizes)
-     if( !chrom_sizes.exists() ) exit 1, "Genome chrom sizes file not found: ${params.chrom_sizes}"
+if ( params.chrom_sizes ){
+    chrom_sizes = file(params.chrom_sizes)
+    if( !chrom_sizes.exists() ) exit 1, "Genome chrom sizes file not found: ${params.chrom_sizes}"
  }
-
-// if ( params.tf_motif_sites ){
-//     tf_motifs_dir = file("${params.tf_motif_sites}")
-// }
 
 if ( params.deep_container ){
     deep_container = file("${params.deep_container}")
@@ -130,6 +125,11 @@ if ( params.genome_refseq ){
 if ( params.effective_genome_size ){
     effective_genome_size = "${params.effective_genome_size}"
 }
+
+
+// if ( params.tf_motif_sites ){
+//     tf_motifs_dir = file("${params.tf_motif_sites}")
+// }
 
 //if ( params.sras ){
 //  sra_ids_list = params.sras.tokenize(",")
@@ -197,6 +197,9 @@ summary['Reads']            = params.reads
 summary['Genome Ref']       = params.genome
 summary['Data Type']        = params.pairedEnd ? 'Paired-End' : 'Single-End'
 summary['Rev Comp']         = params.flip ? 'flip' : 'no-flip'
+summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
+summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
+summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Max Memory']       = params.max_memory
 summary['Max CPUs']         = params.max_cpus
 summary['Max Time']         = params.max_time
@@ -312,34 +315,6 @@ process sra_dump {
 
 
 /*
- * STEP 1a - Produces reverse complement of each short-read seqeuence
- */
-
-process reverse_complement {
-    validExitStatus 0,1
-    tag "$name"
-    publishDir "${params.outdir}/${params.keyword}/fastq/", mode: 'copy', pattern: '*.flip.fastq'
-
-    input:
-    set val(name), file(reads) from fastq_reads_for_reverse_complement.mix(fastq_reads_reversecomp_sra)
-
-    output:
-    set val(name), file("*.flip.fastq") into flipped_reads
-
-    script:
-    """
-    module load fastx-toolkit/0.0.13
-    echo ${name}
-
-    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement \
-        -Q33 \
-        -i ${reads} \
-        -o ${name}.flip.fastq
-    """
-}
-
-
-/*
  * STEP 1b - FastQC
  */
 
@@ -374,6 +349,9 @@ process gzip_fastq {
     memory '4 GB'
     publishDir "${params.outdir}/${params.keyword}/fastq", mode: 'copy'
 
+    when:
+    params.savefq || params.saveAllfq
+    
     input:
     set val(name), file(fastq_reads) from fastq_reads_gzip
 
@@ -494,6 +472,9 @@ process gzip_trimmed {
     tag "$prefix"
     memory '4 GB'
     publishDir "${params.outdir}/${params.keyword}/trimmed", mode: 'copy'
+    
+    when:
+    params.saveTrim || params.saveAllfq
 
     input:
     file(trimmed_reads) from trimmed_reads_gzip

@@ -46,6 +46,7 @@ This will then install the current MutliQC v1.6. Future additions to the pipelin
 * Offically a version associated with latest commit : v 0.1
 * Added --flip argument which will produce reverse complement prior to trimming
 * Added seqkit module to pipeline which has a number of utilities (including reverse complement on fa/fq) and also can be mutlithreaded
+* Added save options for all fastq files (--savefq, --saveTrim, --saveAllfq) -- by default these will not be saved the the output directory
 * Updated SRA Tools to v 2.9.2 which now has fasterq-dump allowing for mutlithreading
 
 #### Major recent updates
