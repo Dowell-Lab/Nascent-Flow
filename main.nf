@@ -63,7 +63,8 @@ def helpMessage() {
          -profile                      Configuration profile to use. <base, fiji>
     
     Options:
-        --pairedEnd                    Specifies that the input files are paired reads (default is single-end). 
+        --pairedEnd                    Specifies that the input files are paired reads (default is single-end).
+        --flip                         Takes the reverse complement of all sequences (necessary for some library preps) NOT YET FUNCTIONAL
 
     """.stripIndent()
 }
@@ -84,6 +85,7 @@ params.name = false
 params.multiqc_config = "$baseDir/conf/multiqc_config.yaml"
 params.email = false
 params.plaintext_email = false
+
 multiqc_config = file(params.multiqc_config)
 output_docs = file("$baseDir/docs/output.md")
 
@@ -194,6 +196,7 @@ summary['Run Name']         = custom_runName ?: workflow.runName
 summary['Reads']            = params.reads
 summary['Genome Ref']       = params.genome
 summary['Data Type']        = params.pairedEnd ? 'Paired-End' : 'Single-End'
+summary['Rev Comp']         = params.flip ? 'flip' : 'no-flip'
 summary['Max Memory']       = params.max_memory
 summary['Max CPUs']         = params.max_cpus
 summary['Max Time']         = params.max_time
@@ -249,6 +252,7 @@ process get_software_versions {
     module load bedtools/2.25.0
     module load igvtools/2.3.75
     module load sra/2.8.0
+    module load seqkit/0.9.0
 
     echo $params.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
@@ -260,6 +264,7 @@ process get_software_versions {
     samtools --version > v_samtools.txt
     fastq-dump --version > v_fastq-dump.txt
     preseq --version > v_preseq.txt
+    seqkit version > v_seqkit.txt
     echo "2.0.3" > v_preseq.txt
 
     # Can't call this before running MultiQC or it breaks it
@@ -310,28 +315,28 @@ process sra_dump {
  * STEP 1a - Produces reverse complement of each short-read seqeuence
  */
 
-//process reverse_complement {
-//    validExitStatus 0,1
-//    tag "$name"
-//    publishDir "${params.outdir}/${params.keyword}/fastq/", mode: 'copy', pattern: '*.flip.fastq'
-//
-//    input:
-//    set val(name), file(reads) from fastq_reads_for_reverse_complement.mix(fastq_reads_reversecomp_sra)
-//
-//    output:
-//    set val(name), file("*.flip.fastq") into flipped_reads
-//
-//    script:
-//    """
-//    module load fastx-toolkit/0.0.13
-//    echo ${name}
-//
-//    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement \
-//        -Q33 \
-//        -i ${reads} \
-//        -o ${name}.flip.fastq
-//    """
-//}
+process reverse_complement {
+    validExitStatus 0,1
+    tag "$name"
+    publishDir "${params.outdir}/${params.keyword}/fastq/", mode: 'copy', pattern: '*.flip.fastq'
+
+    input:
+    set val(name), file(reads) from fastq_reads_for_reverse_complement.mix(fastq_reads_reversecomp_sra)
+
+    output:
+    set val(name), file("*.flip.fastq") into flipped_reads
+
+    script:
+    """
+    module load fastx-toolkit/0.0.13
+    echo ${name}
+
+    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement \
+        -Q33 \
+        -i ${reads} \
+        -o ${name}.flip.fastq
+    """
+}
 
 
 /*
@@ -367,7 +372,7 @@ process fastqc {
 process gzip_fastq {
     tag "$name"
     memory '4 GB'
-    publishDir "${params.outdir}/${params.keyword}/fastq", mode: 'copy', pattern: "*.gz"
+    publishDir "${params.outdir}/${params.keyword}/fastq", mode: 'copy'
 
     input:
     set val(name), file(fastq_reads) from fastq_reads_gzip
@@ -388,16 +393,16 @@ process gzip_fastq {
 
 process bbduk {
     validExitStatus 0,1
-    tag "$name"
+    tag "$prefix"
     cpus 16
     memory '20 GB'
     publishDir "${params.outdir}/${params.keyword}/qc/trimstats", mode: 'copy', pattern: "*.txt"
 
     input:
-    set val(name), file(fastq) from fastq_reads_trim
+    set val(prefix), file(fastq) from fastq_reads_trim
 
     output:
-    file "${name}.trim.fastq" into trimmed_reads_fastqc, trimmed_reads_hisat2, trimmed_reads_gzip
+    file "*.trim.fastq" into trimmed_reads_fastqc, trimmed_reads_hisat2, trimmed_reads_gzip
     file "*.txt" into trim_stats
     
 /* 
@@ -406,24 +411,51 @@ process bbduk {
  */
     
     script:
-    """
-    module load bbmap/38.05
-    echo ${name}
+    prefix = fastq.baseName
+    if (!params.flip) {
+        """
+        module load bbmap/38.05
+        echo ${prefix}
 
-    bbduk.sh -Xmx20g \
-              t=16 \
-              overwrite= t \
-              in=${fastq} \
-              out=${name}.trim.fastq \
-              ref=${bbmap_adapters} \
-              ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-              maq=10 minlen=25 \
-              tpe tbo \
-              literal=AAAAAAAAAAAAAAAAAAAAAAA \
-              stats=${name}.trimstats.txt \
-              refstats=${name}.refstats.txt \
-              ehist=${name}.ehist.txt
-    """
+        bbduk.sh -Xmx20g \
+                  t=16 \
+                  overwrite= t \
+                  in=${fastq} \
+                  out=${prefix}.trim.fastq \
+                  ref=${bbmap_adapters} \
+                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  maq=10 minlen=25 \
+                  tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                  stats=${prefix}.trimstats.txt \
+                  refstats=${prefix}.refstats.txt \
+                  ehist=${prefix}.ehist.txt
+        """
+    } else {
+        """
+        module load bbmap/38.05
+        module load seqkit/0.9.0
+        echo ${prefix}
+        
+        seqkit seq -j 16 -r -p \
+                  ${fastq} \
+                  -o ${prefix}.flip.fastq
+
+        bbduk.sh -Xmx20g \
+                  t=16 \
+                  overwrite= t \
+                  in=${prefix}.flip.fastq \
+                  out=${prefix}.flip.trim.fastq \
+                  ref=${bbmap_adapters} \
+                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  maq=10 minlen=25 \
+                  tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                  stats=${prefix}.trimstats.txt \
+                  refstats=${prefix}.refstats.txt \
+                  ehist=${prefix}.ehist.txt
+        """
+    }
 }
 
 
@@ -522,8 +554,7 @@ process hisat2 {
 process samtools {
     tag "$name"
     memory '100 GB'
-    cpus 8
-    time '16h'
+    cpus 16
     publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam"
     publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam.bai"
     publishDir "${params.outdir}/${params.keyword}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.flagstat"
@@ -540,8 +571,8 @@ process samtools {
     """
     module load samtools/1.8
 
-    samtools view -@ 8 -bS -o ${name}.bam ${mapped_sam}
-    samtools sort -@ 8 ${name}.bam > ${name}.sorted.bam
+    samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
+    samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
     samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
     samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
     """
@@ -590,7 +621,6 @@ process preseq {
 process rseqc {
     tag "$name"
     memory '8 GB'
-    time '2h'
     publishDir "${params.outdir}/${params.keyword}/qc/rseqc" , mode: 'copy',
         saveAs: {filename ->
                  if (filename.indexOf("infer_experiment.txt") > 0)              "infer_experiment/$filename"
@@ -671,7 +701,7 @@ process deeptools_normalized_bigwig {
     tag "$name"
     cpus 16
     memory '50 GB'
-    time '24h'
+    time '8h'
     publishDir "${params.outdir}/${params.keyword}/mapped/bigwigs", mode: 'copy', pattern: "*.bw"
 
     input:
@@ -718,8 +748,6 @@ process dreg_prep {
     errorStrategy 'ignore'
     tag "$name"
     memory '30 GB'
-    time '3h'
-    queue 'long'
     publishDir "${params.outdir}/${params.keyword}/mapped/dreg_input", mode: 'copy', pattern: "*.bw"
 
     input:
@@ -765,8 +793,8 @@ process deeptools_normalized_bedgraph {
     errorStrategy 'ignore'
     tag "$name"
     cpus 16
-    memory '100 GB'
-    time '24h'
+    memory '50 GB'
+    time '8h'
     publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/deeptools/", mode: 'copy', pattern: "${name}.rpkm.bedGraph"
 
     input:
