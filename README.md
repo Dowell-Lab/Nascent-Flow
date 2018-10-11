@@ -43,25 +43,25 @@ This will then install the current MutliQC v1.6. Future additions to the pipelin
 ### Major Changes:
 
 #### Latest updates: *Now version 0.1*
-    * Offically a version associated with latest commit : v 0.1
-    * Added --flip argument which will produce reverse complement prior to trimming
-    * Added seqkit module to pipeline which has a number of utilities (including reverse complement on fa/fq) and also can be mutlithreaded
-    * Updated SRA Tools to v 2.9.2 which now has fasterq-dump allowing for mutlithreading
+* Offically a version associated with latest commit : v 0.1
+* Added --flip argument which will produce reverse complement prior to trimming
+* Added seqkit module to pipeline which has a number of utilities (including reverse complement on fa/fq) and also can be mutlithreaded
+* Updated SRA Tools to v 2.9.2 which now has fasterq-dump allowing for mutlithreading
 
 #### Major recent updates
 
-    * hierarchical structure of directories implemented
-    * changes to bbduk trim trim settings
-    * addition of pileup module
-    * Changed max run time, max default memory, job specific cpu/memory/time requirements that should be more universal
-    * For now, in main.nf, I have commented out the flip. Most shouldn't need to be flipped, but I will also update the main_flip.nf before the end of the week such that it will mirror main.nf except for flipping -- this can be made into a flag at some point
-    * removed wc and unsorted bam flagstat jobs
-    * saved quite a few more qc outputs
-    * added a few steps to rseqc, saved more of the outputs
-    * Because I haven't gotten permission yet to build a new multiqc container, I have it running based on your user install from fiji for now. I have stated this in the README
-    * added "keyword" config in the fiji.config that should be the keyword from excel -- this is also detailed in the README -- at some point I plan to be able to import this automatically
-    * changed default directories to something everyone in the lab should have permissions to
-    * samtools is now multiprocessing which cut the runtime down to about 1/10 of what it was
-    * all required bedgraphs are now saved that will be used in downstream analysis
-    * fixed an error in the dreg bigwigs that caused the pipeline to crash -- this was essentially an error in the chrom.sizes file
-    * Compressing all fastq files for storage -- may choose to delete them in a later version
+* hierarchical structure of directories implemented
+* changes to bbduk trim trim settings
+* addition of pileup module
+* Changed max run time, max default memory, job specific cpu/memory/time requirements that should be more universal
+* For now, in main.nf, I have commented out the flip. Most shouldn't need to be flipped, but I will also update the main_flip.nf before the end of the week such that it will mirror main.nf except for flipping -- this can be made into a flag at some point
+* removed wc and unsorted bam flagstat jobs
+* saved quite a few more qc outputs
+* added a few steps to rseqc, saved more of the outputs
+* Because I haven't gotten permission yet to build a new multiqc container, I have it running based on your user install from fiji for now. I have stated this in the README
+* added "keyword" config in the fiji.config that should be the keyword from excel -- this is also detailed in the README -- at some point I plan to be able to import this automatically
+* changed default directories to something everyone in the lab should have permissions to
+* samtools is now multiprocessing which cut the runtime down to about 1/10 of what it was
+* all required bedgraphs are now saved that will be used in downstream analysis
+* fixed an error in the dreg bigwigs that caused the pipeline to crash -- this was essentially an error in the chrom.sizes file
+* Compressing all fastq files for storage -- may choose to delete them in a later version
