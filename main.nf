@@ -61,6 +61,7 @@ def helpMessage() {
     
     Mandatory arguments:
          -profile                      Configuration profile to use. <base, fiji>
+         --nosra                       Necessary if you're running pipeline using fastq files rather than sra
     
     Options:
         --pairedEnd                    Specifies that the input files are paired reads (default is single-end).
@@ -150,39 +151,51 @@ if( !(workflow.runName ==~ /[a-z]+_[a-z]+/) ){
  * Create a channel for input read files
  */
 if (params.fastq_dir_pattern) {
-    fastq_reads_for_qc = Channel
+    fastq_reads_qc = Channel
                         .fromPath(params.fastq_dir_pattern)
                         .map { file -> tuple(file.baseName, file) }
-    fastq_reads_for_reverse_complement = Channel
-                                          .fromPath(params.fastq_dir_pattern)
-                                          .map { file -> tuple(file.baseName, file) }
-}
-else {
-    Channel
-        .empty()
-        .into { fastq_reads_for_qc; fastq_reads_for_reverse_complement }
+    fastq_reads_trim = Channel
+                        .fromPath(params.fastq_dir_pattern)
+                        .map { file -> tuple(file.baseName, file) }
+    fastq_reads_gzip = Channel
+                        .fromPath(params.fastq_dir_pattern)
+                        .map { file -> tuple(file.baseName, file) }
 }
 
-if (params.sra_dir_pattern) {
+else if (params.sra_dir_pattern) {
     println("pattern for SRAs provided")
     read_files_sra = Channel
                         .fromPath(params.sra_dir_pattern)
                         .map { file -> tuple(file.baseName, file) }
 }
+
 else {
+    Channel
     read_files_sra = Channel.empty()
+        .empty()
+        .into { fastq_reads_qc; fastq_reads_trim }
 }
-
-if (params.sras) {
-        sra_strings.into { read_files_fastqc; read_files_trimming }
-}
-
-if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
-     Channel
-         .fromFilePairs( params.reads, size: params.pairedEnd ? 1 : 2 )
-         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
-         .into { read_files_fastqc; read_files_trimming }
- }
+//
+//if (params.sra_dir_pattern) {
+//    println("pattern for SRAs provided")
+//    read_files_sra = Channel
+//                        .fromPath(params.sra_dir_pattern)
+//                        .map { file -> tuple(file.baseName, file) }
+//}
+//else {
+//    read_files_sra = Channel.empty()
+//}
+//
+//if (params.sras) {
+//        sra_strings.into { read_files_fastqc; read_files_trimming }
+//}
+//
+//if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
+//     Channel
+//         .fromFilePairs( params.reads, size: params.pairedEnd ? 1 : 2 )
+//         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
+//         .into { read_files_fastqc; read_files_trimming }
+// }
 
 
 // Header log info
@@ -195,8 +208,9 @@ summary['Pipeline Version'] = params.version
 summary['Run Name']         = custom_runName ?: workflow.runName
 summary['Reads']            = params.reads
 summary['Genome Ref']       = params.genome
+summary['No SRA']           = params.nosra ? 'TRUE' : 'FALSE'
 summary['Data Type']        = params.pairedEnd ? 'Paired-End' : 'Single-End'
-summary['Rev Comp']         = params.flip ? 'flip' : 'no-flip'
+summary['Rev Comp']         = params.flip ? 'Flip' : 'No-Flip'
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
@@ -288,7 +302,8 @@ process get_software_versions {
  * Step 1a -- get fastq files from downloaded sras
  */
 
-process sra_dump {
+if (!params.nosra) {
+    process sra_dump {
     cpus 8
     tag "$prefix"
 
@@ -308,6 +323,7 @@ process sra_dump {
 
     fasterq-dump ${prefix} -e 8
     """
+    }
 }
 
 //fastq_read_files
@@ -317,15 +333,14 @@ process sra_dump {
 /*
  * STEP 1b - FastQC
  */
-
-process fastqc {
+    process fastqc {
     tag "$name"
     memory '8 GB'
     publishDir "${params.outdir}/${params.keyword}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
-    set val(name), file(reads) from fastq_reads_for_qc.mix(fastq_reads_qc)
+    set val(name), file(reads) from fastq_reads_qc
 
     output:
     file "*_fastqc.{zip,html,txt}" into fastqc_results
@@ -339,6 +354,7 @@ process fastqc {
 		extract_fastqc_stats.sh --srr=${name} > ${name}_stats_fastqc.txt
     """
 }
+
 
 /*
  *STEP 1c - Compress fastq files for storage
@@ -499,7 +515,6 @@ process hisat2 {
     // successful (exit code 0) termination, so we have to ignore errors for
     // now, and the next process will blow up from missing a SAM file instead.
     errorStrategy 'ignore'
-
     tag "$prefix"
     cpus 32
     memory '100 GB'
@@ -601,7 +616,9 @@ process preseq {
 
 process rseqc {
     tag "$name"
-    memory '8 GB'
+    time '8h'
+    validExitStatus 0,143
+    memory '40 GB'
     publishDir "${params.outdir}/${params.keyword}/qc/rseqc" , mode: 'copy',
         saveAs: {filename ->
                  if (filename.indexOf("infer_experiment.txt") > 0)              "infer_experiment/$filename"
@@ -690,7 +707,7 @@ process deeptools_normalized_bigwig {
     file(bam_indices) from sorted_bam_indices_for_bedtools_normalized_bigwig
 
     output:
-    set val(name), file("${name}.*.rpkm.bw") into normalized_bw_ch
+    set val(name), file("*.bw") into normalized_bw_ch
 
     script:
     """
@@ -776,14 +793,14 @@ process deeptools_normalized_bedgraph {
     cpus 16
     memory '50 GB'
     time '8h'
-    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/deeptools/", mode: 'copy', pattern: "${name}.rpkm.bedGraph"
+    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/deeptools/", mode: 'copy'
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_normalized_bedgraph
     file(bam_indices) from sorted_bam_indices_for_bedtools_normalized_bedgraph
 
     output:
-    set val(name), file("${name}.rpkm.bedGraph") into normalized_bed_ch
+    set val(name), file("*.bedGraph") into normalized_bed_ch
 
     script:
     """
