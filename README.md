@@ -21,11 +21,15 @@ First and foremost, edit `conf/fiji.config` to ensure the proper paths and email
 
     $ nextflow run main.nf  -profile fiji
     
-The pipeline runs single-end by default (currently not implemented), so add the --pairedEnd flag for paired read data.
+The pipeline runs single-end by default, so add the --pairedEnd flag for paired read data (not yet implemented).
 
 If anything went wrong, you don't need to restart the pipeline from scratch. Instead...
 
     $ nextflow run main.nf  -profile fiji -resume
+    
+To see a full list of options and pipeline version, enter:
+    
+    $ nextflow run main.nf -profile fiji --help
 
 The results outputs are currently directed to `/scratch/Shares/dowell/NascentDB/` which will be sorted by year and keyword (\<AUTHOR_LAST>\<YEAR>). The temp files are output to `/scratch/Shares/dowell/nascent/nextflow/`.
 
@@ -49,7 +53,7 @@ This will then install the current MutliQC v1.6. Future additions to the pipelin
 * Added save options for all fastq files (--savefq, --saveTrim, --saveAllfq) -- by default these will not be saved the the output directory
 * Updated SRA Tools to v 2.9.2 which now has fasterq-dump allowing for mutlithreading
 
-#### Major recent updates
+#### Other recent updates
 
 * hierarchical structure of directories implemented
 * changes to bbduk trim trim settings

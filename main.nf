@@ -9,8 +9,8 @@
  #### Authors
  Ignacio Tripodi <ignacio.tripodi@colorado.edu>
  Margaret Gruca <magr0763@colorado.edu>
-----------------------------------------------------------------------------------------
-----------------------------------------------------------------------------------------
+========================================================================================
+========================================================================================
 
 Pipeline steps:
 
@@ -61,9 +61,9 @@ def helpMessage() {
     
     Mandatory arguments:
          -profile                      Configuration profile to use. <base, fiji>
-         --nosra                       Necessary if you're running pipeline using fastq files rather than sra
     
-    Options:
+    Input File Options:
+        --nosra                        Necessary if you're running pipeline using fastq files rather than sra.
         --pairedEnd                    Specifies that the input files are paired reads (default is single-end).
         --flip                         Takes the reverse complement of all sequences (necessary for some library preps).
     
@@ -71,6 +71,9 @@ def helpMessage() {
         --savefq                       Compresses and saves raw fastq reads.
         --saveTrim                     Compresses and saves trimmed fastq reads.
         --saveAll                      Compresses and saves all fastq reads.
+        
+    QC Options:
+        --skipMultiQC                  Skip running MultiQC report.
 
     """.stripIndent()
 }
@@ -79,7 +82,7 @@ def helpMessage() {
  * SET UP CONFIGURATION VARIABLES
  */
 
-// Show help emssage
+// Show help message
 params.help = false
 if (params.help){
     helpMessage()
@@ -204,6 +207,7 @@ NascentFlow v${params.version}"
 ======================================================="""
 def summary = [:]
 summary['Pipeline Name']    = 'NascentFlow'
+summary['Help Message']     = params.help
 summary['Pipeline Version'] = params.version
 summary['Run Name']         = custom_runName ?: workflow.runName
 summary['Reads']            = params.reads
@@ -214,6 +218,7 @@ summary['Rev Comp']         = params.flip ? 'Flip' : 'No-Flip'
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
+summary['Run MultiQC']      = params.skipMultiQC ? 'NO' : 'YES'
 summary['Max Memory']       = params.max_memory
 summary['Max CPUs']         = params.max_cpus
 summary['Max Time']         = params.max_time
@@ -314,6 +319,8 @@ if (!params.nosra) {
     set val(prefix), file("${prefix}.fastq") into fastq_reads_reversecomp_sra, fastq_reads_qc, fastq_reads_trim, fastq_reads_gzip
 
 // Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8) and requires a temp directory which is set to the nextflow temp directory
+// IMPORTANT UPDATE! When testing on larger SRAs, fasterq-dump was failing without error. However, after removing the -e 8 argument this works. This suggest there is a problem with the multi-threading, however it still appears to multi-process without the argument if allocated more cpus. Need to report this to NCBI bugs
+// Determined default is to mutli-thread using 6 cpus unless otherwise specified -- still have not yet determined error source
     
     script:
     prefix = reads.baseName
@@ -334,24 +341,26 @@ if (!params.nosra) {
  * STEP 1b - FastQC
  */
     process fastqc {
-    tag "$name"
+    validExitStatus 0,1
+    tag "$prefix"
     memory '8 GB'
     publishDir "${params.outdir}/${params.keyword}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
-    set val(name), file(reads) from fastq_reads_qc
+    set val(prefix), file(reads) from fastq_reads_qc
 
     output:
-    file "*_fastqc.{zip,html,txt}" into fastqc_results
+    file "*.{zip,html,txt}" into fastqc_results
 
     script:
+    prefix = reads.baseName
     """
     module load fastqc/0.11.5
-    echo ${name}
+    echo ${prefix}
 
     fastqc $reads
-		extract_fastqc_stats.sh --srr=${name} > ${name}_stats_fastqc.txt
+		extract_fastqc_stats.sh --srr=${prefix} > ${prefix}_stats_fastqc.txt
     """
 }
 
@@ -548,29 +557,30 @@ process hisat2 {
  */
 
 process samtools {
-    tag "$name"
+    tag "$prefix"
     memory '100 GB'
     cpus 16
-    publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam"
-    publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam.bai"
-    publishDir "${params.outdir}/${params.keyword}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.flagstat"
+    publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam"
+    publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam.bai"
+    publishDir "${params.outdir}/${params.keyword}/qc/mapstats", mode: 'copy', pattern: "${prefix}.sorted.bam.flagstat"
 
     input:
     set val(name), file(mapped_sam) from hisat2_sam
 
     output:
-    set val(name), file("${name}.sorted.bam") into sorted_bam_ch
-    set val(name), file("${name}.sorted.bam.bai") into sorted_bam_indices_ch
-    set val(name), file("${name}.sorted.bam.flagstat") into bam_flagstat
+    set val(name), file("${prefix}.sorted.bam") into sorted_bam_ch
+    set val(name), file("${prefix}.sorted.bam.bai") into sorted_bam_indices_ch
+    set val(name), file("${prefix}.sorted.bam.flagstat") into bam_flagstat
 
     script:
+    prefix = mapped_sam.baseName
     """
     module load samtools/1.8
 
-    samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
-    samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
-    samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
-    samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
+    samtools view -@ 16 -bS -o ${prefix}.bam ${mapped_sam}
+    samtools sort -@ 16 ${prefix}.bam > ${prefix}.sorted.bam
+    samtools flagstat ${prefix}.sorted.bam > ${prefix}.sorted.bam.flagstat
+    samtools index ${prefix}.sorted.bam ${prefix}.sorted.bam.bai
     """
 }
 
@@ -699,7 +709,7 @@ process deeptools_normalized_bigwig {
     tag "$name"
     cpus 16
     memory '50 GB'
-    time '8h'
+    time '4h'
     publishDir "${params.outdir}/${params.keyword}/mapped/bigwigs", mode: 'copy', pattern: "*.bw"
 
     input:
@@ -792,7 +802,7 @@ process deeptools_normalized_bedgraph {
     tag "$name"
     cpus 16
     memory '50 GB'
-    time '8h'
+    time '4h'
     publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/deeptools/", mode: 'copy'
 
     input:
@@ -800,7 +810,7 @@ process deeptools_normalized_bedgraph {
     file(bam_indices) from sorted_bam_indices_for_bedtools_normalized_bedgraph
 
     output:
-    set val(name), file("*.bedGraph") into normalized_bed_ch
+    set val(name), file("${name}.rpkm.bedGraph") into normalized_bed_ch
 
     script:
     """
@@ -902,7 +912,7 @@ process bedtools_bedgraph {
 
 process igvtools {
     tag "$name"
-    memory '100 GB'
+    memory '200 GB'
     // This often blows up due to a ceiling in memory usage, so we can ignore
     // and re-run later as it's non-essential.
     errorStrategy 'ignore'
@@ -934,6 +944,9 @@ process multiqc {
     publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
     publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy', pattern: "*_data"
 
+    when:
+    !params.skipMultiQC
+    
     input:
     file multiqc_config
     file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
