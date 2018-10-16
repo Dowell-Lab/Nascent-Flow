@@ -9,7 +9,7 @@ regexes = {
     'FastQC': ['v_fastqc.txt', r"FastQC v(\S+)"],
     'MultiQC': ['v_multiqc.txt', r"multiqc, version (\S+)"],
     'Samtools': ['v_samtools.txt', r"samtools (\S+)"],
-    'fastq-dump': ['v_fastq-dump.txt', r"fastq-dump : (\S+)"],
+    'fasterq-dump': ['v_fasterq-dump.txt', r"fasterq-dump : (\S+)"],
     'Bedtools': ['v_bedtools.txt', r"bedtools v(\S+)"],
     'IGV Tools': ['v_igv-tools.txt', r"IGV Version (\S+)"],
     'FastX Reverse Complement': ['v_fastx_reverse_complement.txt', r"FASTX Toolkit (\S+) by"],

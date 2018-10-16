@@ -1,4 +1,4 @@
-# Nextflow implementation of our GRO-seq pipeline
+# Nextflow Implementation of the Dowell Lab Nascent Pipeline
 
 For internal Dowell Lab use.
 
@@ -48,6 +48,9 @@ This will then install the current MutliQC v1.6. Future additions to the pipelin
 
 #### Latest updates: *Now version 0.1*
 * Offically a version associated with latest commit : v 0.1
+* Added --nosra argument which will allow you to skip fasterq-dump when running fastq files
+* Added --skipMultiQC argument which skips MutliQC
+* Fixed help message display with --help argument
 * Added --flip argument which will produce reverse complement prior to trimming
 * Added seqkit module to pipeline which has a number of utilities (including reverse complement on fa/fq) and also can be mutlithreaded
 * Added save options for all fastq files (--savefq, --saveTrim, --saveAllfq) -- by default these will not be saved the the output directory

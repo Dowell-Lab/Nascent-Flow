@@ -273,7 +273,7 @@ process get_software_versions {
     module load preseq/2.0.3
     module load bedtools/2.25.0
     module load igvtools/2.3.75
-    module load sra/2.8.0
+    module load sra/2.9.2
     module load seqkit/0.9.0
 
     echo $params.version > v_pipeline.txt
@@ -284,7 +284,7 @@ process get_software_versions {
     bbduk.sh --version > v_bbduk.txt || true
     hisat2 --version > v_hisat2.txt
     samtools --version > v_samtools.txt
-    fastq-dump --version > v_fastq-dump.txt
+    fasterq-dump --version > v_fastq-dump.txt
     preseq --version > v_preseq.txt
     seqkit version > v_seqkit.txt
     echo "2.0.3" > v_preseq.txt
