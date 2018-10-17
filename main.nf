@@ -318,9 +318,10 @@ if (!params.nosra) {
     output:
     set val(prefix), file("${prefix}.fastq") into fastq_reads_reversecomp_sra, fastq_reads_qc, fastq_reads_trim, fastq_reads_gzip
 
-// Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8) and requires a temp directory which is set to the nextflow temp directory
-// IMPORTANT UPDATE! When testing on larger SRAs, fasterq-dump was failing without error. However, after removing the -e 8 argument this works. This suggest there is a problem with the multi-threading, however it still appears to multi-process without the argument if allocated more cpus. Need to report this to NCBI bugs
-// Determined default is to mutli-thread using 6 cpus unless otherwise specified -- still have not yet determined error source
+/* Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads 
+ * (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8) 
+ * and requires a temp directory which is set to the nextflow temp directory
+ */
     
     script:
     prefix = reads.baseName
@@ -527,6 +528,7 @@ process hisat2 {
     tag "$prefix"
     cpus 32
     memory '100 GB'
+    time '2h'
 
     input:
     file(indices) from hisat2_indices
@@ -597,7 +599,7 @@ sorted_bam_indices_ch
 
 process preseq {
     tag "$name"
-    memory '4 GB'
+    memory '20 GB'
     publishDir "${params.outdir}/${params.keyword}/qc/preseq/", mode: 'copy', pattern: "*.txt"
 
     input:
@@ -708,7 +710,7 @@ process deeptools_normalized_bigwig {
     errorStrategy 'ignore'
     tag "$name"
     cpus 16
-    memory '50 GB'
+    memory '100 GB'
     time '4h'
     publishDir "${params.outdir}/${params.keyword}/mapped/bigwigs", mode: 'copy', pattern: "*.bw"
 
@@ -801,7 +803,7 @@ process deeptools_normalized_bedgraph {
     errorStrategy 'ignore'
     tag "$name"
     cpus 16
-    memory '50 GB'
+    memory '100 GB'
     time '4h'
     publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/deeptools/", mode: 'copy'
 
@@ -857,7 +859,7 @@ process bedtools_bedgraph {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
-    memory '20 GB'
+    memory '80 GB'
     time '4h'
     publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/bedtools", mode: 'copy', pattern: "*.bedGraph"
 
