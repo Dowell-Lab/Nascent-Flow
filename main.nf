@@ -709,8 +709,8 @@ process deeptools_normalized_bigwig {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
-    cpus 16
-    memory '100 GB'
+    cpus 32
+    memory '80 GB'
     time '4h'
     publishDir "${params.outdir}/${params.keyword}/mapped/bigwigs", mode: 'copy', pattern: "*.bw"
 
@@ -729,7 +729,7 @@ process deeptools_normalized_bigwig {
     echo "Creating normalized BigWigs"
 
     singularity exec -H ${params.singularity_home} ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
+    bamCoverage --numberOfProcessors 32 \
                 -b ${bam_file} \
                 --filterRNAstrand reverse \
                 --normalizeUsing RPKM \
@@ -802,8 +802,8 @@ process deeptools_normalized_bedgraph {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
-    cpus 16
-    memory '100 GB'
+    cpus 32
+    memory '80 GB'
     time '4h'
     publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/deeptools/", mode: 'copy'
 
@@ -822,7 +822,7 @@ process deeptools_normalized_bedgraph {
     echo "Creating normalized coverage files"
 
     singularity exec -H ${params.singularity_home} ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
+    bamCoverage --numberOfProcessors 32 \
                 -b ${bam_file} \
                 --filterRNAstrand reverse \
                 --normalizeUsing RPKM \
@@ -915,6 +915,7 @@ process bedtools_bedgraph {
 process igvtools {
     tag "$name"
     memory '200 GB'
+    time '1h'
     // This often blows up due to a ceiling in memory usage, so we can ignore
     // and re-run later as it's non-essential.
     errorStrategy 'ignore'

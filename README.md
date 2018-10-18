@@ -36,7 +36,9 @@ To see a full list of options and pipeline version, enter:
     
     $ nextflow run main.nf -profile fiji --help
 
-The results outputs are currently directed to `/scratch/Shares/dowell/NascentDB/` which will be sorted by year and keyword (\<AUTHOR_LAST>\<YEAR>). The temp files are output to `/scratch/Shares/dowell/nascent/nextflow/`.
+The results output for our internal database is currently directed to `/scratch/Shares/dowell/NascentDB/` which will be sorted by keyword (\<AUTHOR_LAST>\<YEAR>).
+
+This pipeline is now designed to run either fastqs or sras with use of optional arguments. If you choose to run this pipeline on your own data, you must change the **workdir** variable in nextflow.config under the fiji profile to a directory of your choosing. In order for deeptools to run correctly, you must also change the **singularity_home** variable in conf/fiji.config.
 
 ##### MultiQC Installation
 
