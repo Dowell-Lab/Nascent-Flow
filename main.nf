@@ -565,6 +565,7 @@ process samtools {
     publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam"
     publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam.bai"
     publishDir "${params.outdir}/${params.keyword}/qc/mapstats", mode: 'copy', pattern: "${prefix}.sorted.bam.flagstat"
+    publishDir "${params.outdir}/${params.keyword}/qc/mapstats", mode: 'copy', pattern: "${prefix}.sorted.bam.millionsmapped"
 
     input:
     set val(name), file(mapped_sam) from hisat2_sam
@@ -573,24 +574,28 @@ process samtools {
     set val(name), file("${prefix}.sorted.bam") into sorted_bam_ch
     set val(name), file("${prefix}.sorted.bam.bai") into sorted_bam_indices_ch
     set val(name), file("${prefix}.sorted.bam.flagstat") into bam_flagstat
+    set val(name), file("${prefix}.sorted.bam.millionsmapped") into bam_milmapped_bedgraph
 
     script:
     prefix = mapped_sam.baseName
+// Note that the millionsmapped arugments below are only good for SE data. When PE is added, it will need to be changed to:
+    // -F 0x40 rootname.sorted.bam | cut -f1 | sort | uniq | wc -l  > rootname.bam.millionsmapped
     """
     module load samtools/1.8
 
     samtools view -@ 16 -bS -o ${prefix}.bam ${mapped_sam}
     samtools sort -@ 16 ${prefix}.bam > ${prefix}.sorted.bam
     samtools flagstat ${prefix}.sorted.bam > ${prefix}.sorted.bam.flagstat
+    samtools view -@ 16 -F 0x904 -c ${prefix}.sorted.bam > ${prefix}.sorted.bam.millionsmapped
     samtools index ${prefix}.sorted.bam ${prefix}.sorted.bam.bai
     """
 }
 
 sorted_bam_ch
-   .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_bedtools_normalized_bigwig; sorted_bams_for_bedtools_normalized_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup}
+   .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup}
 
 sorted_bam_indices_ch
-    .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indices_for_bedtools_normalized_bigwig; sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc}
+    .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc}
 
 /*
  *STEP 5a - Plot the estimated complexity of a sample, and estimate future yields
@@ -700,54 +705,86 @@ process pileup {
     """
  }
 
-
 /*
- *STEP 6a - Create Normalized BigWig files for nascent database v2.0
+ *STEP 6a - Create non-normalzied bedGraphs for analysis using FStitch/Tfit
  */
 
-process deeptools_normalized_bigwig {
+process bedgraphs {
     validExitStatus 0,143
-    errorStrategy 'ignore'
     tag "$name"
-    cpus 32
     memory '80 GB'
     time '4h'
-    publishDir "${params.outdir}/${params.keyword}/mapped/bigwigs", mode: 'copy', pattern: "*.bw"
+    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs", mode: 'copy', pattern: "*{neg,pos}.bedGraph"
+    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"
+    publishDir "${params.outdir}/${params.keyword}/mapped/rcc_bedgraphs", mode: 'copy', pattern: "${name}.rcc.bedGraph"
 
     input:
-    set val(name), file(bam_file) from sorted_bams_for_bedtools_normalized_bigwig
-    file(bam_indices) from sorted_bam_indices_for_bedtools_normalized_bigwig
+    set val(name), file(bam_file) from sorted_bams_for_bedtools_bedgraph
+    set val(name), file(bam_indices) from sorted_bam_indices_for_bedtools_bedgraph
+    set val(name), file(millions_mapped) from bam_milmapped_bedgraph
 
     output:
-    set val(name), file("*.bw") into normalized_bw_ch
+    set val(name), file("*.bedGraph") into non_normalized_bedgraphs
+    set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
+    set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
+    set val(name), file("${name}.neg.rcc.bedGraph") into bedgraph_bigwig_neg
 
     script:
     """
     module load bedtools/2.25.0
-    module load singularity/2.4
+    module load python/2.7.14
 
-    echo "Creating normalized BigWigs"
+    genomeCoverageBed \
+                     -bg \
+                     -strand + \
+                     -g hg38 \
+                     -ibam ${bam_file} \
+                     > ${name}.pos.bedGraph
 
-    singularity exec -H ${params.singularity_home} ${deep_container} \
-    bamCoverage --numberOfProcessors 32 \
-                -b ${bam_file} \
-                --filterRNAstrand reverse \
-                --normalizeUsing RPKM \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bigwig \
-                -o ${name}.pos.rpkm.bw
+    genomeCoverageBed \
+                     -bg \
+                     -strand - \
+                     -g hg38 \
+                     -ibam ${bam_file} \
+                     > ${name}.tmp.neg.bedGraph
+                     
+     awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.bedGraph \
+        > ${name}.neg.bedGraph
+        rm ${name}.tmp.neg.bedGraph
 
-    singularity exec -H ${params.singularity_home} ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
-                -b ${bam_file} \
-                --filterRNAstrand forward \
-                --normalizeUsing RPKM \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bigwig \
-                -o ${name}.neg.rpkm.bw
+    cat ${name}.pos.bedGraph \
+        ${name}.neg.bedGraph \
+        > ${name}.unsorted.bedGraph
+
+    sortBed \
+             -i ${name}.unsorted.bedGraph \
+             > ${name}.bedGraph
+
+    rm ${name}.unsorted.bedGraph
+    
+    python ${params.path_to_rcc} \
+        ${name}.bedGraph \
+        ${millions_mapped} \
+        ${name}.rcc.bedGraph \
+        
+    python ${params.path_to_rcc} \
+        ${name}.pos.bedGraph \
+        ${millions_mapped} \
+        ${name}.unsorted.pos.rcc.bedGraph
+        
+    sortBed -i ${name}.unsorted.pos.rcc.bedGraph > ${name}.pos.rcc.bedGraph
+    rm ${name}.unsorted.pos.rcc.bedGraph
+        
+    python ${params.path_to_rcc} \
+        ${name}.neg.bedGraph \
+        ${millions_mapped} \
+        ${name}.unsorted.neg.rcc.bedGraph
+        
+    sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
+    rm ${name}.unsorted.neg.rcc.bedGraph
+    
     """
  }
-
 
 /*
  *STEP 6b - Create bedGraphs and bigwigs for dREG
@@ -765,7 +802,7 @@ process dreg_prep {
     file(chrom_sizes) from chrom_sizes
 
     output:
-        set val(name), file("*.bw") into dreg_bw_ch
+        set val(name), file("*.bw") into dreg_bigwig
 
     script:
     """
@@ -774,7 +811,8 @@ process dreg_prep {
     echo "Creating BigWigs suitable as inputs to dREG"
 
     bedtools bamtobed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
-    awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' > ${name}.dreg.bed
+    awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
+    > ${name}.dreg.bed
     sort -k1,1 ${name}.dreg.bed > ${name}.dreg.sort.bed
     
     echo positive strand processed to bedGraph
@@ -795,121 +833,33 @@ process dreg_prep {
  }
 
 /*
- *STEP 6c - Create normalized bedGraphs using deepTools for visualization and conversion to tdfs
+ *STEP 7 - Normalize bigWigs by millions of reads mapped for visualization on nascent2.0
  */
 
-process deeptools_normalized_bedgraph {
-    validExitStatus 0,143
-    errorStrategy 'ignore'
+process normalized_bigwigs {
+    validExitStatus 0
     tag "$name"
-    cpus 32
-    memory '80 GB'
-    time '4h'
-    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/deeptools/", mode: 'copy'
+    memory '30 GB'
+    publishDir "${params.outdir}/${params.keyword}/mapped/rcc_bigwig", mode: 'copy'
 
     input:
-    set val(name), file(bam_file) from sorted_bams_for_bedtools_normalized_bedgraph
-    file(bam_indices) from sorted_bam_indices_for_bedtools_normalized_bedgraph
+    set val(name), file(neg_bedgraph) from bedgraph_bigwig_neg
+    set val(name), file(pos_bedgraph) from bedgraph_bigwig_pos
+    file(chrom_sizes) from chrom_sizes
 
     output:
-    set val(name), file("${name}.rpkm.bedGraph") into normalized_bed_ch
+    set val(name), file("*.rcc.bw") into normalized_bigwig
 
     script:
     """
-    module load bedtools/2.25.0
-    module load singularity/2.4
+    ${params.path_to_bedGraphToBigWig} ${pos_bedgraph} ${chrom_sizes} ${name}.pos.rcc.bw
+    ${params.path_to_bedGraphToBigWig} ${neg_bedgraph} ${chrom_sizes} ${name}.neg.rcc.bw
 
-    echo "Creating normalized coverage files"
-
-    singularity exec -H ${params.singularity_home} ${deep_container} \
-    bamCoverage --numberOfProcessors 32 \
-                -b ${bam_file} \
-                --filterRNAstrand reverse \
-                --normalizeUsing RPKM \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bedgraph \
-                -o ${name}.pos.rpkm.bedGraph
-
-    singularity exec -H ${params.singularity_home} ${deep_container} \
-    bamCoverage --numberOfProcessors 16 \
-                -b ${bam_file} \
-                --filterRNAstrand forward \
-                --normalizeUsing RPKM \
-                --effectiveGenomeSize ${effective_genome_size} \
-                -of bedgraph \
-                -o ${name}.tmp.neg.rpkm.bedGraph
-
-    echo "Create the real negative strand normalized coverage file"
-    awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.rpkm.bedGraph \
-        > ${name}.neg.rpkm.bedGraph
-    rm ${name}.tmp.neg.rpkm.bedGraph
-
-    echo "Merge positive and negative normalized strand bedGraphs"
-    cat ${name}.pos.rpkm.bedGraph <(grep -v '^@' ${name}.neg.rpkm.bedGraph) \
-        | sortBed \
-        > ${name}.rpkm.bedGraph
     """
- }
+}
 
 /*
- *STEP 6d - Create non-normalzied bedGraphs for analysis using FStitch/Tfit
- */
-
-process bedtools_bedgraph {
-    validExitStatus 0,143
-    errorStrategy 'ignore'
-    tag "$name"
-    memory '80 GB'
-    time '4h'
-    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs/bedtools", mode: 'copy', pattern: "*.bedGraph"
-
-    input:
-    set val(name), file(bam_file) from sorted_bams_for_bedtools_bedgraph
-    file(bam_indices) from sorted_bam_indices_for_bedtools_bedgraph
-
-    output:
-    set val(name), file("*.bedGraph") into non_normalized_bedgraph_ch
-
-    script:
-    """
-    module load bedtools/2.25.0
-
-    genomeCoverageBed \
-                     -bg \
-                     -strand + \
-                     -g hg38 \
-                     -ibam ${bam_file} \
-                     > ${name}.bt.pos.bedGraph
-
-    genomeCoverageBed \
-                     -bg \
-                     -strand - \
-                     -g hg38 \
-                     -ibam ${bam_file} \
-                     > ${name}.tmp.bt.neg.bedGraph
-                     
-     awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.bt.neg.bedGraph \
-        > ${name}.bt.neg.bedGraph
-        rm ${name}.tmp.bt.neg.bedGraph
-
-    cat ${name}.bt.pos.bedGraph \
-        ${name}.bt.neg.bedGraph \
-        > ${name}.bt.unsorted.bedGraph
-
-    sortBed \
-             -i ${name}.bt.unsorted.bedGraph \
-             > ${name}.bt.bedGraph
-
-    rm ${name}.bt.unsorted.bedGraph
-    """
- }
-
-// normalized_bed_ch
-//     .combine(flagstat_ch, by:0)
-//     .set {bed_and_flagset_ch}
-
-/*
- *STEP 7 - IGV Tools : generate tdfs for optimal visualization in Integrative Genomics Viewer (IGV)
+ *STEP 8 - IGV Tools : generate tdfs for optimal visualization in Integrative Genomics Viewer (IGV)
  */
 
 process igvtools {
@@ -922,7 +872,7 @@ process igvtools {
     publishDir "${params.outdir}/${params.keyword}/mapped/tdfs", mode: 'copy', pattern: "*.tdf"
 
     input:
-    set val(name), file(normalized_bed) from normalized_bed_ch
+    set val(name), file(normalized_bg) from bedgraph_tdf
     file(chrom_sizes) from chrom_sizes
 
     output:
@@ -932,14 +882,14 @@ process igvtools {
     """
     module load igvtools/2.3.75
 
-    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bed} ${name}.rpkm.tdf ${chrom_sizes}
+    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bg} ${name}.rpkm.tdf ${chrom_sizes}
     """
  }
 
 
 
 /*
- * STEP 8 - MultiQC
+ * STEP 9 - MultiQC
  */
 process multiqc {
     validExitStatus 0,1,143
@@ -981,7 +931,7 @@ process multiqc {
 
 
 /*
- * STEP 9 - Output Description HTML
+ * STEP 10 - Output Description HTML
  */
 //
 //process output_documentation {

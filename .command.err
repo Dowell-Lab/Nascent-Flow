@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/scratch/Shares/dowell/nascent/rcc.py", line 36, in <module>
+    main(Bedgraphfile, flagstatfile, readcountcorrBedgraphfile)
+  File "/scratch/Shares/dowell/nascent/rcc.py", line 20, in main
+    total_reads = gettotalreadsfromflagstat(flagstatfile)
+  File "/scratch/Shares/dowell/nascent/rcc.py", line 14, in gettotalreadsfromflagstat
+    mapped_reads = int(mapped_reads.split(" ")[0])
+ValueError: invalid literal for int() with base 10: 'SRR4012402.trim'

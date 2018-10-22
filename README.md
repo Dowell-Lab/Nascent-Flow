@@ -62,7 +62,13 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 
 ### Major Changes:
 
-#### Latest version: *Now Version 0.2*
+#### Updates: *Version 0.3*
+* Replaced deeptools normalization with rcc.py
+* Added samtools view flag to generate .millionsmapped file which gives raw number of reads mapped (does not include any multi-mapping stats)
+* Added new deeptools normalization process
+* Runtime and memory requirements significantly reduced with removal of singularity and deeptools requirement
+
+#### Additions in Version 0.2
 * Fixed help message such that it will print and exit job successfully
 * Fixed memory and time cap issues that arose when trying to process larger files
 * Fixed version scraping to reflect pipeline updates
