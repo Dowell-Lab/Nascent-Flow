@@ -15,44 +15,42 @@ Install Nextflow:
     $ module load curl/7.49.1 (or set path to curl executable if installed locally)
     $ curl -s https://get.nextflow.io | bash
     
-#### Fiji Specific Usage Requirements
+#### Slurm-Specific Usage Requirements
 ##### Primary Run Settings
 
-If you are using Fiji, this will install nextflow to your home directory. As such, to run Nextflow, you will need to set the PATH to your home directory. Doing so as the following will set the PATH as a variable so you can still acess other paths (e.g. when you load modules) on Fiji without conflict:
+If you are using Linux, this will install nextflow to your home directory. As such, to run Nextflow, you will need to set the PATH to your home directory. Doing so as the following will set the PATH as a variable so you can still acess other paths (e.g. when you load modules) on your cluster without conflict:
 
     $export PATH=~:$PATH
 
-First and foremost, edit `conf/fiji.config` to ensure the proper paths and email address are set. variable names should hopefully be self-explanatory. Currently the easiest way to process a bunch of SRAs is to put them all in a certain directory and provide the path to this in `sra_dir_pattern`. You will also want to provide the `outdir` path and a `keyword` which typically will be (\<AUTHOR_LAST>\<YEAR>). Then:
+First and foremost, edit `conf/slurm_grch38.config` to ensure the proper paths and email address are set (look for all mentions of `COMPLETE_*`), as well as `nextflow.config`. Variable names should hopefully be self-explanatory. Currently the easiest way to process a collection of SRAs is to put them all in a certain directory and provide the path to this in `sra_dir_pattern`. The equivalent process for `fastq` files is to place them in the `fastq_dir_pattern` specified in the configuration. You will also want to provide the `outdir` path and a `keyword` which typically will be (\<AUTHOR_LAST>\<YEAR>). Then:
 
-    $ nextflow run main.nf  -profile fiji
+    $ nextflow run main.nf  -profile slurm_grch38
     
-The pipeline runs single-end by default, so add the --pairedEnd flag for paired read data (not yet implemented).
+Notice the name of the configuration file. It's generally a good idea to keep separate configuration files for samples using different reference genomes, and different organisms. The pipeline runs single-end by default. The --pairedEnd flag for paired read data is currently under implementation.
 
 If anything went wrong, you don't need to restart the pipeline from scratch. Instead...
 
-    $ nextflow run main.nf  -profile fiji -resume
+    $ nextflow run main.nf  -profile slurm_grch38 -resume
     
 To see a full list of options and pipeline version, enter:
     
-    $ nextflow run main.nf -profile fiji --help
-
-The results output for our internal database is currently directed to `/scratch/Shares/dowell/NascentDB/` which will be sorted by keyword (\<AUTHOR_LAST>\<YEAR>).
+    $ nextflow run main.nf -profile slurm_grch38 --help
 
 ##### IMPORTANT
 
-This pipeline is now designed to run either fastqs or sras with use of optional arguments. If you choose to run this pipeline on your own data, you must change the **workdir** variable in nextflow.config under the fiji profile to a directory of your choosing. In order for deeptools to run correctly, you must also change the **singularity_home** variable in conf/fiji.config.
+This pipeline is now designed to run either fastqs or SRAs with use of optional arguments. If you choose to run this pipeline on your own data in a shared environment, you may want to change the **workdir** variable in `nextflow.config` to a directory of your choosing. In order for deeptools to run correctly, you must also change the **singularity_home** variable in conf/slurm_grch38.config.
 
 ##### MultiQC Installation
 
-MultiQC will also run by default upon completion of all previous steps. However, in its current configuration, you must have installed MultiQC to your Fiji user home by running:
+MultiQC will also run by default upon completion of all previous steps. However, in its current configuration, you must have installed MultiQC to your home directory by running:
 
     $ pip3 install multiqc --user
     
-This will then install the current MutliQC v1.6. Future additions to the pipeline will include a singularity container for MultiQC to remove this prequisite.
+This will then install the current MutliQC v1.6. Future additions to the pipeline will include a singularity container for MultiQC to remove this prerequisite.
 
 ##### Running Nextflow Using an sbatch script
 
-The best way to run Nextflow is using an sbatch script using the same command specified above. While test jobs on small sras can be done on the command line or a screen, if you are logged out of Fiji your job will likely error and cause issues in temp files in Fiji. Furthermore if you are logged back in on a different node, you will not be able to return to that screen. The memory requirements do not exceed 8GB, so you do not need to request more RAM than this. A sample sbatch script is located in `/scratch/Shares/dowell/NascentDB/` under the filename `nextflow.sbatch`. Instructions for changing the default prefetch output directory are also included in `prefetch.sbatch`. SRAs must be downloaded prior to running the pipeline.
+The best way to run Nextflow is using an sbatch script using the same command specified above. It's advisable to execute the workflow at least in a `screen` session, so you can log out of your cluster and check the progress and any errors in standard output more easily. Nextflow does a great job at keeping logs of every transaction, anyway, should you lose access to the console. The memory requirements do not exceed 8GB, so you do not need to request more RAM than this. SRAs must be downloaded prior to running the pipeline.
 
 ### Credits
 
