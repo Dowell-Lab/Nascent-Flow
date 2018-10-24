@@ -110,10 +110,6 @@ if ( params.chrom_sizes ){
     if( !chrom_sizes.exists() ) exit 1, "Genome chrom sizes file not found: ${params.chrom_sizes}"
  }
 
-if ( params.deep_container ){
-    deep_container = file("${params.deep_container}")
-}
-
 if ( params.bbmap_adapters ){
     bbmap_adapters = file("${params.bbmap_adapters}")
 }
@@ -124,10 +120,6 @@ if ( params.hisat2_indices ){
 
 if ( params.genome_refseq ){
     genome_refseq = file("${params.genome_refseq}")
-}
-
-if ( params.effective_genome_size ){
-    effective_genome_size = "${params.effective_genome_size}"
 }
 
 
@@ -329,7 +321,7 @@ if (!params.nosra) {
     module load sra/2.9.2
     echo ${prefix}
 
-    fasterq-dump ${prefix} -e 8
+    fastq-dump ${prefix}
     """
     }
 }
