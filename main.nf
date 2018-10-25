@@ -301,7 +301,7 @@ process get_software_versions {
 
 if (!params.nosra) {
     process sra_dump {
-    cpus 8
+    cpus 1
     tag "$prefix"
 
     input:
