@@ -48,6 +48,16 @@ MultiQC will also run by default upon completion of all previous steps. However,
     
 This will then install the current MutliQC v1.6. Future additions to the pipeline will include a singularity container for MultiQC to remove this prerequisite.
 
+##### Parallel-fastq-dump Installation
+
+As of verison 0.4, we have implemented a wrapper for fastq-dump for multi-threading in place of fasterq-dump due to memory leak issues. This, however, requires the installation of parallel-fastq-dump to your user home. You can do so by running:
+    
+    $pip3 install paralell-fastq-dump --user
+    
+This will check for the sra-tools requirement, so if you do not want this installed to your user then this dependency must already be loaded to your path (i.e. module load sra/2.9.2).
+
+This has been added as an *option* and the pipeline will run fastq-dump (single core) by default. To run multi-threading on 8 cores, you must specify `--threadfqdump` as a nextflow run argument.
+
 ##### Running Nextflow Using an sbatch script
 
 The best way to run Nextflow is using an sbatch script using the same command specified above. It's advisable to execute the workflow at least in a `screen` session, so you can log out of your cluster and check the progress and any errors in standard output more easily. Nextflow does a great job at keeping logs of every transaction, anyway, should you lose access to the console. The memory requirements do not exceed 8GB, so you do not need to request more RAM than this. SRAs must be downloaded prior to running the pipeline.
@@ -60,13 +70,18 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 
 ### Major Changes:
 
-#### Updates: *Version 0.3*
+#### Latest Release *Version 0.4*
+* Removed fasterq-dump and replaced it with a python wrapper (*requires python 3!*) for multi-threading -- this is an option and can be used by specifying `--threadfqdump` and if specified will run on 8 cores
+* Cleaned up unused arguments
+* Generated generic files in preparation for public release
+
+#### Updates in Version 0.3
 * Replaced deeptools normalization with rcc.py
 * Added samtools view flag to generate .millionsmapped file which gives raw number of reads mapped (does not include any multi-mapping stats)
 * Added new deeptools normalization process
 * Runtime and memory requirements significantly reduced with removal of singularity and deeptools requirement
 
-#### Additions in Version 0.2
+#### Updates in Version 0.2
 * Fixed help message such that it will print and exit job successfully
 * Fixed memory and time cap issues that arose when trying to process larger files
 * Fixed version scraping to reflect pipeline updates

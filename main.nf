@@ -61,8 +61,11 @@ def helpMessage() {
     
     Mandatory arguments:
          -profile                      Configuration profile to use. <base, fiji>
+         
+    Performance options:
+        --threadfqdump                 Runs multi-threading for fastq-dump for sra processing.
     
-    Input File Options:
+    Input File options:
         --nosra                        Necessary if you're running pipeline using fastq files rather than sra.
         --pairedEnd                    Specifies that the input files are paired reads (default is single-end).
         --flip                         Takes the reverse complement of all sequences (necessary for some library preps).
@@ -205,6 +208,7 @@ summary['Run Name']         = custom_runName ?: workflow.runName
 summary['Reads']            = params.reads
 summary['Genome Ref']       = params.genome
 summary['No SRA']           = params.nosra ? 'TRUE' : 'FALSE'
+summary['Thread fqdump']    = params.threadfqdump ? 'YES' : 'NO'
 summary['Data Type']        = params.pairedEnd ? 'Paired-End' : 'Single-End'
 summary['Rev Comp']         = params.flip ? 'Flip' : 'No-Flip'
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
@@ -301,39 +305,52 @@ process get_software_versions {
 
 if (!params.nosra) {
     process sra_dump {
-    cpus 1
-    tag "$prefix"
+        tag "$prefix"
+        if (params.threadfqdump) {
+            cpus 8 }
+        else { 
+            cpus 1
+        }
 
-    input:
-    set val(prefix), file(reads) from read_files_sra
+        input:
+        set val(prefix), file(reads) from read_files_sra
 
-    output:
-    set val(prefix), file("${prefix}.fastq") into fastq_reads_reversecomp_sra, fastq_reads_qc, fastq_reads_trim, fastq_reads_gzip
+        output:
+        set val(prefix), file("${prefix}.fastq") into fastq_reads_reversecomp_sra, fastq_reads_qc, fastq_reads_trim, fastq_reads_gzip
 
-/* Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads 
- * (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8) 
- * and requires a temp directory which is set to the nextflow temp directory
- */
-    
-    script:
-    prefix = reads.baseName
-    """
-    module load sra/2.9.2
-    echo ${prefix}
+    /* Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads 
+     * (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8) 
+     * and requires a temp directory which is set to the nextflow temp directory
+     */
 
-    fastq-dump ${prefix}
-    """
-    }
+        script:
+        prefix = reads.baseName
+        if (!params.threadfqdump) {
+            """
+            module load sra/2.9.2
+            echo ${prefix}
+
+            fastq-dump ${reads}
+            """
+      } else {
+            """
+            export PATH=~/.local/bin:$PATH
+            module load sra/2.9.2
+            module load python/3.6.3
+
+            parallel-fastq-dump \
+                --threads 8 \
+                --sra-id ${reads}
+            """
+        }
+      }
 }
-
-//fastq_read_files
-//   .into {fastq_reads_for_reverse_complement; fastq_reads_for_qc}
-
 
 /*
  * STEP 1b - FastQC
  */
-    process fastqc {
+
+process fastqc {
     validExitStatus 0,1
     tag "$prefix"
     memory '8 GB'
