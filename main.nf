@@ -14,36 +14,36 @@
 
 Pipeline steps:
 
-    1. Pre-processing sra/fastq 
+    1. Pre-processing sra/fastq
         1a. SRA tools -- fasterq-dump sra to generate fastq file
         1b. FastQC (pre-trim) -- perform pre-trim FastQC on fastq files
         1c. Gzip fastq -- compress fastq files for storage
-        
+
     2. Trimming
         2a. BBDuk -- trim fastq files for quality and adapters
         2b. FastQC (post-trim) -- perform post-trim FastQC on fastq files (ensure trimming performs as expected)
-        
+
     3. Mapping w/ HISAT2 -- map to genome reference file
-    
+
     4. SAMtools -- convert SAM file to BAM, index BAM, flagstat BAM
-    
+
     5. Quality control
         5a. preseq -- estimate library complexity
         5b. RSeQC -- calculate genomic coverage relative to a reference file, infer experiement (single- v. paired-end), read duplication
         5c. Pileup.sh : BBMap Suite -- genomic coverage by chromosome, GC content, pos/neg reads, intron/exon ratio
-        
+
     6. Coverage files
         6a. deepTools : normalized bigwigs
         6b. BEDTools and kentUtils : 5' bigwigs for dREG
         6c. deepTools : normalized bedgraphs
         6d. BEDTools : non-normalized bedgraphs
-        
+
     7. IGV Tools : bedGraph --> tdf
-    
+
     8. MultiQC : generate QC report for pipeline
-    
+
     9. Pipeline report
-    
+
 
 */
 
@@ -58,23 +58,22 @@ def helpMessage() {
     The typical command for running the pipeline is as follows:
 
     nextflow run main.nf -profile fiji
-    
+
     Mandatory arguments:
          -profile                      Configuration profile to use. <base, fiji>
-         
+
     Performance options:
         --threadfqdump                 Runs multi-threading for fastq-dump for sra processing.
-    
+
     Input File options:
-        --nosra                        Necessary if you're running pipeline using fastq files rather than sra.
         --pairedEnd                    Specifies that the input files are paired reads (default is single-end).
         --flip                         Takes the reverse complement of all sequences (necessary for some library preps).
-    
+
     Save options:
         --savefq                       Compresses and saves raw fastq reads.
         --saveTrim                     Compresses and saves trimmed fastq reads.
         --saveAll                      Compresses and saves all fastq reads.
-        
+
     QC Options:
         --skipMultiQC                  Skip running MultiQC report.
 
@@ -159,8 +158,13 @@ if (params.fastq_dir_pattern) {
                         .fromPath(params.fastq_dir_pattern)
                         .map { file -> tuple(file.baseName, file) }
 }
+else {
+    Channel
+        .empty()
+        .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip }
+}
 
-else if (params.sra_dir_pattern) {
+if (params.sra_dir_pattern) {
     println("pattern for SRAs provided")
     read_files_sra = Channel
                         .fromPath(params.sra_dir_pattern)
@@ -168,10 +172,7 @@ else if (params.sra_dir_pattern) {
 }
 
 else {
-    Channel
     read_files_sra = Channel.empty()
-        .empty()
-        .into { fastq_reads_qc; fastq_reads_trim }
 }
 //
 //if (params.sra_dir_pattern) {
@@ -188,12 +189,12 @@ else {
 //        sra_strings.into { read_files_fastqc; read_files_trimming }
 //}
 //
-//if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
-//     Channel
-//         .fromFilePairs( params.reads, size: params.pairedEnd ? 1 : 2 )
-//         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
-//         .into { read_files_fastqc; read_files_trimming }
-// }
+if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
+     Channel
+         .fromFilePairs( params.reads, size: params.pairedEnd ? 1 : 2 )
+         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!" }
+         .into { read_files_fastqc; read_files_trimming }
+ }
 
 
 // Header log info
@@ -207,7 +208,6 @@ summary['Pipeline Version'] = params.version
 summary['Run Name']         = custom_runName ?: workflow.runName
 summary['Reads']            = params.reads
 summary['Genome Ref']       = params.genome
-summary['No SRA']           = params.nosra ? 'TRUE' : 'FALSE'
 summary['Thread fqdump']    = params.threadfqdump ? 'YES' : 'NO'
 summary['Data Type']        = params.pairedEnd ? 'Paired-End' : 'Single-End'
 summary['Rev Comp']         = params.flip ? 'Flip' : 'No-Flip'
@@ -303,47 +303,45 @@ process get_software_versions {
  * Step 1a -- get fastq files from downloaded sras
  */
 
-if (!params.nosra) {
-    process sra_dump {
-        tag "$prefix"
-        if (params.threadfqdump) {
-            cpus 8 }
-        else { 
-            cpus 1
-        }
+process sra_dump {
+    tag "$prefix"
+    if (params.threadfqdump) {
+        cpus 8 }
+    else {
+        cpus 1
+    }
 
-        input:
-        set val(prefix), file(reads) from read_files_sra
+    input:
+    set val(prefix), file(reads) from read_files_sra
 
-        output:
-        set val(prefix), file("${prefix}.fastq") into fastq_reads_reversecomp_sra, fastq_reads_qc, fastq_reads_trim, fastq_reads_gzip
+    output:
+    set val(prefix), file("*.fastq") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_gzip_sra
 
-    /* Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads 
-     * (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8) 
-     * and requires a temp directory which is set to the nextflow temp directory
-     */
+/* Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads
+  * (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8)
+  * and requires a temp directory which is set to the nextflow temp directory
+  */
 
-        script:
-        prefix = reads.baseName
-        if (!params.threadfqdump) {
-            """
-            module load sra/2.9.2
-            echo ${prefix}
+    script:
+    prefix = reads.baseName
+    if (!params.threadfqdump) {
+        """
+        module load sra/2.9.2
+        echo ${prefix}
 
-            fastq-dump ${reads}
-            """
-      } else {
-            """
-            export PATH=~/.local/bin:$PATH
-            module load sra/2.9.2
-            module load python/3.6.3
+        fastq-dump ${reads}
+        """
+    } else {
+        """
+        export PATH=~/.local/bin:$PATH
+        module load sra/2.9.2
+        module load python/3.6.3
 
-            parallel-fastq-dump \
-                --threads 8 \
-                --sra-id ${reads}
-            """
-        }
-      }
+        parallel-fastq-dump \
+            --threads 8 \
+            --sra-id ${reads}
+        """
+    }
 }
 
 /*
@@ -358,7 +356,7 @@ process fastqc {
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
-    set val(prefix), file(reads) from fastq_reads_qc
+    set val(prefix), file(reads) from fastq_reads_qc.mix(fastq_reads_qc_sra)
 
     output:
     file "*.{zip,html,txt}" into fastqc_results
@@ -386,9 +384,9 @@ process gzip_fastq {
 
     when:
     params.savefq || params.saveAllfq
-    
+
     input:
-    set val(name), file(fastq_reads) from fastq_reads_gzip
+    set val(name), file(fastq_reads) from fastq_reads_gzip.mix(fastq_reads_gzip_sra)
 
     output:
     set val(name), file("*.gz") into compressed_fastq
@@ -412,17 +410,17 @@ process bbduk {
     publishDir "${params.outdir}/${params.keyword}/qc/trimstats", mode: 'copy', pattern: "*.txt"
 
     input:
-    set val(prefix), file(fastq) from fastq_reads_trim
+    set val(prefix), file(fastq) from fastq_reads_trim.mix(fastq_reads_trim_sra)
 
     output:
     file "*.trim.fastq" into trimmed_reads_fastqc, trimmed_reads_hisat2, trimmed_reads_gzip
     file "*.txt" into trim_stats
-    
-/* 
+
+/*
  * Options tpe and tbo are specifically for paired end, however have no effect on single-end so these are included by default
  * Option minlen=25 will overtrim slightly, but is recommended to take care of leftover adapter from the cicularitation protocol
  */
-    
+
     script:
     prefix = fastq.baseName
     if (!params.flip) {
@@ -449,7 +447,7 @@ process bbduk {
         module load bbmap/38.05
         module load seqkit/0.9.0
         echo ${prefix}
-        
+
         seqkit seq -j 16 -r -p \
                   ${fastq} \
                   -o ${prefix}.flip.fastq
@@ -479,7 +477,7 @@ process bbduk {
 process fastqc_trimmed {
     tag "$prefix"
     memory '4 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/fastqc/", mode: 'copy', 
+    publishDir "${params.outdir}/${params.keyword}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
@@ -507,7 +505,7 @@ process gzip_trimmed {
     tag "$prefix"
     memory '4 GB'
     publishDir "${params.outdir}/${params.keyword}/trimmed", mode: 'copy'
-    
+
     when:
     params.saveTrim || params.saveAllfq
 
@@ -629,7 +627,7 @@ process preseq {
 
     preseq c_curve -B -o ${name}.c_curve.txt \
            ${bam_file}
-           
+
     preseq lc_extrap -B -o ${name}.lc_extrap.txt \
            ${bam_file}
     """
@@ -674,10 +672,10 @@ process rseqc {
     read_distribution.py -i ${bam_file} \
                          -r ${genome_refseq} \
                          > ${name}.read_dist.txt
-                         
+
     read_duplication.py -i ${bam_file} \
                         -o ${name}.read_duplication
-                        
+
     infer_experiment.py -i ${bam_file} \
                         -r ${genome_refseq} \
                         > ${name}.infer_experiment.txt
@@ -706,7 +704,7 @@ process pileup {
     """
     module load bbmap/38.05
     module load samtools/1.8
-    
+
     pileup.sh -Xmx20g \
               in=${bam_file} \
               out=${name}.coverage.stats.txt \
@@ -756,7 +754,7 @@ process bedgraphs {
                      -g hg38 \
                      -ibam ${bam_file} \
                      > ${name}.tmp.neg.bedGraph
-                     
+
      awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.bedGraph \
         > ${name}.neg.bedGraph
         rm ${name}.tmp.neg.bedGraph
@@ -770,28 +768,28 @@ process bedgraphs {
              > ${name}.bedGraph
 
     rm ${name}.unsorted.bedGraph
-    
+
     python ${params.path_to_rcc} \
         ${name}.bedGraph \
         ${millions_mapped} \
         ${name}.rcc.bedGraph \
-        
+
     python ${params.path_to_rcc} \
         ${name}.pos.bedGraph \
         ${millions_mapped} \
         ${name}.unsorted.pos.rcc.bedGraph
-        
+
     sortBed -i ${name}.unsorted.pos.rcc.bedGraph > ${name}.pos.rcc.bedGraph
     rm ${name}.unsorted.pos.rcc.bedGraph
-        
+
     python ${params.path_to_rcc} \
         ${name}.neg.bedGraph \
         ${millions_mapped} \
         ${name}.unsorted.neg.rcc.bedGraph
-        
+
     sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
     rm ${name}.unsorted.neg.rcc.bedGraph
-    
+
     """
  }
 
@@ -823,7 +821,7 @@ process dreg_prep {
     awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
     > ${name}.dreg.bed
     sort -k1,1 ${name}.dreg.bed > ${name}.dreg.sort.bed
-    
+
     echo positive strand processed to bedGraph
 
     bedtools genomecov -bg -i ${name}.dreg.sort.bed -g ${chrom_sizes} -strand + > ${name}.pos.bedGraph
@@ -831,12 +829,12 @@ process dreg_prep {
     bedtools genomecov -bg -i ${name}.dreg.sort.bed -g ${chrom_sizes} -strand - \
     | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' > ${name}.neg.bedGraph
     sortBed -i ${name}.neg.bedGraph > ${name}.neg.sort.bedGraph
-    
+
     echo negative strand processed to bedGraph
 
     ${params.path_to_bedGraphToBigWig} ${name}.pos.sort.bedGraph ${chrom_sizes} ${name}.pos.bw
     ${params.path_to_bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
-    
+
     echo bedGraph to bigwig done
     """
  }
@@ -908,7 +906,7 @@ process multiqc {
 
     when:
     !params.skipMultiQC
-    
+
     input:
     file multiqc_config
     file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
@@ -926,9 +924,9 @@ process multiqc {
     script:
     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
     rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
-    
-//TO DO : Need to build a new multiqc container for the newest version    
-    
+
+//TO DO : Need to build a new multiqc container for the newest version
+
     """
     module load python/3.6.3
     export PATH=~/.local/bin:$PATH
