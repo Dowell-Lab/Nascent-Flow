@@ -612,7 +612,7 @@ sorted_bam_indices_ch
 process preseq {
     tag "$name"
     memory '20 GB'
-    time '8hr'
+    time '8h'
     publishDir "${params.outdir}/${params.keyword}/qc/preseq/", mode: 'copy', pattern: "*.txt"
 
     input:

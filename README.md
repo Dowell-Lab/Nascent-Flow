@@ -85,7 +85,6 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 * Fixed help message such that it will print and exit job successfully
 * Fixed memory and time cap issues that arose when trying to process larger files
 * Fixed version scraping to reflect pipeline updates
-* Added --nosra argument which will allow you to skip fasterq-dump when running fastq files
 * Added --skipMultiQC argument which skips MutliQC
 * Added --flip argument which will produce reverse complement prior to trimming
 * Added seqkit module to pipeline which has a number of utilities (including reverse complement on fa/fq) and also can be mutlithreaded
