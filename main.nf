@@ -57,19 +57,23 @@ def helpMessage() {
 
     The typical command for running the pipeline is as follows:
 
-    nextflow run main.nf -profile fiji
+    nextflow run main.nf -profile fiji --fastqs '/project/*_{R1,R2}*.fastq' --outdir '/project/'
 
-    Mandatory arguments:
+    Required arguments:
          -profile                      Configuration profile to use. <base, fiji>
+         --fastqs                      Directory pattern for fastq files: /project/*{R1,R2}*.fastq (Required if --sras not specified)
+         --sras                        Directory pattern for SRA files: /project/*.sras (Required if --fastqs not specified)
+         --workDir                     Nextflow working directory where all intermediate files are saved.
+         --email                       Where to send workflow report email.
 
     Performance options:
         --threadfqdump                 Runs multi-threading for fastq-dump for sra processing.
 
     Input File options:
-        --pairedEnd                    Specifies that the input files are paired reads (default is single-end).
-        --flip                         Takes the reverse complement of all sequences (necessary for some library preps).
+        --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
 
     Save options:
+        --outdir                       Specifies where to save the output from the nextflow run.
         --savefq                       Compresses and saves raw fastq reads.
         --saveTrim                     Compresses and saves trimmed fastq reads.
         --saveAll                      Compresses and saves all fastq reads.
@@ -124,17 +128,6 @@ if ( params.genome_refseq ){
     genome_refseq = file("${params.genome_refseq}")
 }
 
-
-// if ( params.tf_motif_sites ){
-//     tf_motifs_dir = file("${params.tf_motif_sites}")
-// }
-
-//if ( params.sras ){
-//  sra_ids_list = params.sras.tokenize(",")
-//} else {
-//  Channel.empty().set {sra_ids_list }
-//}
-
 // Has the run name been specified by the user?
 //  this has the bonus effect of catching both -name and --name
 custom_runName = params.name
@@ -147,54 +140,62 @@ if( !(workflow.runName ==~ /[a-z]+_[a-z]+/) ){
 /*
  * Create a channel for input read files
  */
-if (params.fastq_dir_pattern) {
-    fastq_reads_qc = Channel
-                        .fromPath(params.fastq_dir_pattern)
-                        .map { file -> tuple(file.baseName, file) }
-    fastq_reads_trim = Channel
-                        .fromPath(params.fastq_dir_pattern)
-                        .map { file -> tuple(file.baseName, file) }
-    fastq_reads_gzip = Channel
-                        .fromPath(params.fastq_dir_pattern)
-                        .map { file -> tuple(file.baseName, file) }
+if (params.fastqs) {
+    if (params.singleEnd) {
+        fastq_reads_qc = Channel
+                            .fromPath(params.fastqs)
+                            .map { file -> tuple(file.baseName, file) }
+        fastq_reads_trim = Channel
+                            .fromPath(params.fastqs)
+                            .map { file -> tuple(file.baseName, file) }
+        fastq_reads_gzip = Channel
+                            .fromPath(params.fastqs)
+                            .map { file -> tuple(file.baseName, file) }
+    } else {
+        Channel
+            .fromFilePairs( params.fastqs, size: params.singleEnd ? 1 : 2 )
+            .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
+            .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip }
+    }
 }
+
 else {
     Channel
         .empty()
         .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip }
 }
 
-if (params.sra_dir_pattern) {
-    println("pattern for SRAs provided")
+if (params.sras) {
+    if (params.singleEnd) {
+    println("Pattern for SRAs provided")
     read_files_sra = Channel
-                        .fromPath(params.sra_dir_pattern)
+                        .fromPath(params.sras)
                         .map { file -> tuple(file.baseName, file) }
+    } else {
+         Channel
+             .fromFilePairs( params.sras, size: params.singleEnd ? 1 : 2 )
+             .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
+             .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip }
+    }
 }
 
 else {
     read_files_sra = Channel.empty()
 }
-//
-//if (params.sra_dir_pattern) {
-//    println("pattern for SRAs provided")
-//    read_files_sra = Channel
-//                        .fromPath(params.sra_dir_pattern)
-//                        .map { file -> tuple(file.baseName, file) }
-//}
-//else {
-//    read_files_sra = Channel.empty()
-//}
-//
+
 //if (params.sras) {
 //        sra_strings.into { read_files_fastqc; read_files_trimming }
 //}
-//
-if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
-     Channel
-         .fromFilePairs( params.reads, size: params.pairedEnd ? 1 : 2 )
-         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!" }
-         .into { read_files_fastqc; read_files_trimming }
- }
+
+//if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
+//     Channel
+//         .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
+//         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
+//         .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip }
+// }
+
+
+
 
 
 // Header log info
@@ -206,11 +207,12 @@ summary['Pipeline Name']    = 'NascentFlow'
 summary['Help Message']     = params.help
 summary['Pipeline Version'] = params.version
 summary['Run Name']         = custom_runName ?: workflow.runName
-summary['Reads']            = params.reads
+if(params.reads) summary['Reads']            = params.reads
+if(params.fastqs) summary['Fastqs']           = params.fastqs
+if(params.sras) summary['SRAs']             = params.sras
 summary['Genome Ref']       = params.genome
 summary['Thread fqdump']    = params.threadfqdump ? 'YES' : 'NO'
-summary['Data Type']        = params.pairedEnd ? 'Paired-End' : 'Single-End'
-summary['Rev Comp']         = params.flip ? 'Flip' : 'No-Flip'
+summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
@@ -225,9 +227,7 @@ if(workflow.containerEngine) summary['Container'] = workflow.container
 summary['Current home']     = "$HOME"
 summary['Current user']     = "$USER"
 summary['Current path']     = "$PWD"
-summary['Working dir']      = workflow.workDir
 summary['Output dir']       = params.outdir
-summary['Project dir']      = params.keyword
 summary['Script dir']       = workflow.projectDir
 summary['Config Profile']   = workflow.profile
 if(params.email) summary['E-mail Address'] = params.email
@@ -331,6 +331,24 @@ process sra_dump {
 
         fastq-dump ${reads}
         """
+    } else if (!params.singleEnd) {
+         """
+        export PATH=~/.local/bin:$PATH
+        module load sra/2.9.2
+        module load python/3.6.3
+
+        parallel-fastq-dump \
+            --threads 8 \
+            --split-3 \
+            --sra-id ${reads}
+        """
+    } else if (!params.threadfqdump && !params.singleEnd) {
+        """
+        module load sra/2.9.2
+        echo ${prefix}
+
+        fastq-dump --split-3 ${reads}
+        """
     } else {
         """
         export PATH=~/.local/bin:$PATH
@@ -352,7 +370,7 @@ process fastqc {
     validExitStatus 0,1
     tag "$prefix"
     memory '8 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/fastqc/", mode: 'copy',
+    publishDir "${params.outdir}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
@@ -380,7 +398,7 @@ process fastqc {
 process gzip_fastq {
     tag "$name"
     memory '4 GB'
-    publishDir "${params.outdir}/${params.keyword}/fastq", mode: 'copy'
+    publishDir "${params.outdir}/fastq", mode: 'copy'
 
     when:
     params.savefq || params.saveAllfq
@@ -404,67 +422,54 @@ process gzip_fastq {
 
 process bbduk {
     validExitStatus 0,1
-    tag "$prefix"
+    tag "$name"
     cpus 16
     memory '20 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/trimstats", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.txt"
 
     input:
-    set val(prefix), file(fastq) from fastq_reads_trim.mix(fastq_reads_trim_sra)
+    set val(name), file(reads) from fastq_reads_trim.mix(fastq_reads_trim_sra)
 
     output:
-    file "*.trim.fastq" into trimmed_reads_fastqc, trimmed_reads_hisat2, trimmed_reads_gzip
+    set val(name), file ("*.trim.fastq") into trimmed_reads_fastqc, trimmed_reads_hisat2, trimmed_reads_gzip
     file "*.txt" into trim_stats
 
-/*
- * Options tpe and tbo are specifically for paired end, however have no effect on single-end so these are included by default
- * Option minlen=25 will overtrim slightly, but is recommended to take care of leftover adapter from the cicularitation protocol
- */
-
     script:
-    prefix = fastq.baseName
-    if (!params.flip) {
+//    prefix = fastq.baseName
+    if (!params.singleEnd) {
         """
         module load bbmap/38.05
-        echo ${prefix}
+        echo ${name}
 
         bbduk.sh -Xmx20g \
                   t=16 \
-                  overwrite= t \
-                  in=${fastq} \
-                  out=${prefix}.trim.fastq \
+                  in=${name}_R1.fastq \
+                  in2=${name}_R2.fastq \
+                  out=${name}_R1.trim.fastq \
+                  out2=${name}_R2.trim.fastq \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
+                  maq=10 minlen=20 \
                   tpe tbo \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${prefix}.trimstats.txt \
-                  refstats=${prefix}.refstats.txt \
-                  ehist=${prefix}.ehist.txt
+                  stats=${name}.trimstats.txt \
+                  refstats=${name}.refstats.txt \
+                  ehist=${name}.ehist.txt
         """
     } else {
         """
         module load bbmap/38.05
-        module load seqkit/0.9.0
-        echo ${prefix}
-
-        seqkit seq -j 16 -r -p \
-                  ${fastq} \
-                  -o ${prefix}.flip.fastq
-
+        echo ${name}
+        
         bbduk.sh -Xmx20g \
                   t=16 \
-                  overwrite= t \
-                  in=${prefix}.flip.fastq \
-                  out=${prefix}.flip.trim.fastq \
+                  in=${name}.fastq \
+                  out=${name}.trim.fastq \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
-                  tpe tbo \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${prefix}.trimstats.txt \
-                  refstats=${prefix}.refstats.txt \
-                  ehist=${prefix}.ehist.txt
+                  maq=10 minlen=20 \
+                  stats=${name}.trimstats.txt \
+                  refstats=${name}.refstats.txt \
+                  ehist=${name}.ehist.txt
         """
     }
 }
@@ -475,13 +480,14 @@ process bbduk {
  */
 
 process fastqc_trimmed {
+    validExitStatus 0,1
     tag "$prefix"
     memory '4 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/fastqc/", mode: 'copy',
+    publishDir "${params.outdir}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
 
     input:
-    file(trimmed_reads) from trimmed_reads_fastqc
+    set val(prefix), file(trimmed_reads) from trimmed_reads_fastqc
 
     output:
     file "*_fastqc.{zip,html,txt}" into trimmed_fastqc_results
@@ -504,7 +510,7 @@ process fastqc_trimmed {
 process gzip_trimmed {
     tag "$prefix"
     memory '4 GB'
-    publishDir "${params.outdir}/${params.keyword}/trimmed", mode: 'copy'
+    publishDir "${params.outdir}/trimmed", mode: 'copy'
 
     when:
     params.saveTrim || params.saveAllfq
@@ -531,8 +537,9 @@ process hisat2 {
     // NOTE: this is poorly written and sends output there even in
     // successful (exit code 0) termination, so we have to ignore errors for
     // now, and the next process will blow up from missing a SAM file instead.
-    errorStrategy 'ignore'
-    tag "$prefix"
+    //errorStrategy 'ignore'
+    tag "$name"
+    validExitStatus 0,143
     cpus 32
     memory '100 GB'
     time '2h'
@@ -540,24 +547,39 @@ process hisat2 {
     input:
     file(indices) from hisat2_indices
     val(indices_path) from hisat2_indices
-    file(trimmed_reads) from trimmed_reads_hisat2
+    set val(name), file(trimmed_reads) from trimmed_reads_hisat2
 
     output:
-    set val(prefix), file("${prefix}.sam") into hisat2_sam
+    set val(name), file("*.sam") into hisat2_sam
 
     script:
-    prefix = trimmed_reads.baseName
-    """
-    module load hisat2/2.1.0
-    echo ${prefix}
-
-    hisat2  -p 32 \
-            --very-sensitive \
-            --no-spliced-alignment \
-            -x ${indices_path}\
-            -U ${trimmed_reads} \
-            > ${prefix}.sam
-    """
+    //prefix = trimmed_reads.baseName
+    if (!params.singleEnd) {
+        """
+        module load hisat2/2.1.0
+        echo ${name}
+    
+        hisat2  -p 32 \
+                --very-sensitive \
+                --no-spliced-alignment \
+                -x ${indices_path} \
+                -1 ${name}_R1.trim.fastq \
+                -2 ${name}_R2.trim.fastq
+                > ${name}.sam
+        """
+    } else {
+        """
+        module load hisat2/2.1.0
+        echo ${name}
+    
+        hisat2  -p 32 \
+                --very-sensitive \
+                --no-spliced-alignment \
+                -x ${indices_path}\
+                -U ${trimmed_reads} \
+                > ${name}.sam
+        """
+    }
 }
 
 
@@ -569,10 +591,10 @@ process samtools {
     tag "$prefix"
     memory '100 GB'
     cpus 16
-    publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam"
-    publishDir "${params.outdir}/${params.keyword}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam.bai"
-    publishDir "${params.outdir}/${params.keyword}/qc/mapstats", mode: 'copy', pattern: "${prefix}.sorted.bam.flagstat"
-    publishDir "${params.outdir}/${params.keyword}/qc/mapstats", mode: 'copy', pattern: "${prefix}.sorted.bam.millionsmapped"
+    publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam"
+    publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam.bai"
+    publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${prefix}.sorted.bam.flagstat"
+    publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${prefix}.sorted.bam.millionsmapped"
 
     input:
     set val(name), file(mapped_sam) from hisat2_sam
@@ -613,7 +635,7 @@ process preseq {
     tag "$name"
     memory '20 GB'
     time '8h'
-    publishDir "${params.outdir}/${params.keyword}/qc/preseq/", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/qc/preseq/", mode: 'copy', pattern: "*.txt"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_preseq
@@ -644,7 +666,7 @@ process rseqc {
     time '8h'
     validExitStatus 0,143
     memory '40 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/rseqc" , mode: 'copy',
+    publishDir "${params.outdir}/qc/rseqc" , mode: 'copy',
         saveAs: {filename ->
                  if (filename.indexOf("infer_experiment.txt") > 0)              "infer_experiment/$filename"
             else if (filename.indexOf("read_distribution.txt") > 0)             "read_distribution/$filename"
@@ -692,7 +714,7 @@ process rseqc {
 process pileup {
     tag "$name"
     memory '50 GB'
-    publishDir "${params.outdir}/${params.keyword}/qc/pileup", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/qc/pileup", mode: 'copy', pattern: "*.txt"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_pileup
@@ -722,9 +744,9 @@ process bedgraphs {
     tag "$name"
     memory '80 GB'
     time '4h'
-    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs", mode: 'copy', pattern: "*{neg,pos}.bedGraph"
-    publishDir "${params.outdir}/${params.keyword}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"
-    publishDir "${params.outdir}/${params.keyword}/mapped/rcc_bedgraphs", mode: 'copy', pattern: "${name}.rcc.bedGraph"
+    publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "*{neg,pos}.bedGraph"
+    publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"
+    publishDir "${params.outdir}/mapped/rcc_bedgraphs", mode: 'copy', pattern: "${name}.rcc.bedGraph"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_bedgraph
@@ -803,7 +825,7 @@ process dreg_prep {
     errorStrategy 'ignore'
     tag "$name"
     memory '30 GB'
-    publishDir "${params.outdir}/${params.keyword}/mapped/dreg_input", mode: 'copy', pattern: "*.bw"
+    publishDir "${params.outdir}/mapped/dreg_input", mode: 'copy', pattern: "*.bw"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_dreg_prep
@@ -821,7 +843,7 @@ process dreg_prep {
     bedtools bamtobed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
     awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
     > ${name}.dreg.bed
-    sort -k1,1 ${name}.dreg.bed > ${name}.dreg.sort.bed
+    sortBed -i ${name}.dreg.bed > ${name}.dreg.sort.bed
 
     echo positive strand processed to bedGraph
 
@@ -848,7 +870,7 @@ process normalized_bigwigs {
     validExitStatus 0
     tag "$name"
     memory '30 GB'
-    publishDir "${params.outdir}/${params.keyword}/mapped/rcc_bigwig", mode: 'copy'
+    publishDir "${params.outdir}/mapped/rcc_bigwig", mode: 'copy'
 
     input:
     set val(name), file(neg_bedgraph) from bedgraph_bigwig_neg
@@ -877,7 +899,7 @@ process igvtools {
     // This often blows up due to a ceiling in memory usage, so we can ignore
     // and re-run later as it's non-essential.
     errorStrategy 'ignore'
-    publishDir "${params.outdir}/${params.keyword}/mapped/tdfs", mode: 'copy', pattern: "*.tdf"
+    publishDir "${params.outdir}/mapped/tdfs", mode: 'copy', pattern: "*.tdf"
 
     input:
     set val(name), file(normalized_bg) from bedgraph_tdf
@@ -902,8 +924,8 @@ process igvtools {
 process multiqc {
     validExitStatus 0,1,143
     errorStrategy 'ignore'
-    publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
-    publishDir "${params.outdir}/${params.keyword}/multiqc/", mode: 'copy', pattern: "*_data"
+    publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
+    publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "*_data"
 
     when:
     !params.skipMultiQC
@@ -944,7 +966,7 @@ process multiqc {
 //
 //process output_documentation {
 //    tag "$prefix"
-//    publishDir "${params.outdir}/${params.keyword}/pipeline_info/", mode: 'copy'
+//    publishDir "${params.outdir}/pipeline_info/", mode: 'copy'
 //
 //    input:
 //    file output_docs
@@ -1025,7 +1047,7 @@ workflow.onComplete {
     }
 
     // Write summary e-mail HTML to a file
-    def output_d = new File( "${params.outdir}/${params.keyword}/pipeline_info/" )
+    def output_d = new File( "${params.outdir}/pipeline_info/" )
     if( !output_d.exists() ) {
       output_d.mkdirs()
     }

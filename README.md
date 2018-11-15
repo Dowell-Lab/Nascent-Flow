@@ -22,11 +22,11 @@ If you are using Linux, this will install nextflow to your home directory. As su
 
     $export PATH=~:$PATH
 
-First and foremost, edit `conf/slurm_grch38.config` to ensure the proper paths and email address are set (look for all mentions of `COMPLETE_*`), as well as `nextflow.config`. Variable names should hopefully be self-explanatory. Currently the easiest way to process a collection of SRAs is to put them all in a certain directory and provide the path to this in `sra_dir_pattern`. The equivalent process for `fastq` files is to place them in the `fastq_dir_pattern` specified in the configuration. You will also want to provide the `outdir` path and a `keyword` which typically will be (\<AUTHOR_LAST>\<YEAR>). Then:
+First and foremost, edit `conf/slurm_grch38.config` to ensure the proper paths and email address are set (look for all mentions of `COMPLETE_*`), as well as `nextflow.config`. Variable names should hopefully be self-explanatory. As of version 1.0, there are now flags by which you can provide directories containing fastqs and sras. Furthermore, you can now specify the Nextflow working directory and output directory with flags. Last, you must also now specify the email to which the report will be sent for the run.
 
-    $ nextflow run main.nf  -profile slurm_grch38
+    $ nextflow run main.nf  -profile slurm_grch38 --workDir </nextflow/work/temp/> --outdir </my/project/> --email <john.doe@themailplace.com> --sras </dir/to/sras/>
     
-Notice the name of the configuration file. It's generally a good idea to keep separate configuration files for samples using different reference genomes, and different organisms. The pipeline runs single-end by default. The --pairedEnd flag for paired read data is currently under implementation.
+Notice the name of the configuration file. It's generally a good idea to keep separate configuration files for samples using different reference genomes, and different organisms. The pipeline runs ***paired-end by default***. The --singleEnd flag must be added for all single-end data. While most nascent data is single-end, Groovy configurations make paired-end processing an easier default.
 
 If anything went wrong, you don't need to restart the pipeline from scratch. Instead...
 
@@ -35,10 +35,6 @@ If anything went wrong, you don't need to restart the pipeline from scratch. Ins
 To see a full list of options and pipeline version, enter:
     
     $ nextflow run main.nf -profile slurm_grch38 --help
-
-##### IMPORTANT
-
-This pipeline is now designed to run either fastqs or SRAs with use of optional arguments. If you choose to run this pipeline on your own data in a shared environment, you may want to change the **workdir** variable in `nextflow.config` to a directory of your choosing. In order for deeptools to run correctly, you must also change the **singularity_home** variable in conf/slurm_grch38.config.
 
 ##### MultiQC Installation
 
@@ -62,49 +58,47 @@ This has been added as an *option* and the pipeline will run fastq-dump (single 
 
 The best way to run Nextflow is using an sbatch script using the same command specified above. It's advisable to execute the workflow at least in a `screen` session, so you can log out of your cluster and check the progress and any errors in standard output more easily. Nextflow does a great job at keeping logs of every transaction, anyway, should you lose access to the console. The memory requirements do not exceed 8GB, so you do not need to request more RAM than this. SRAs must be downloaded prior to running the pipeline.
 
+## Arguments
+
+**Required Arguments**
+
+| Arugment  | Usage                            | Description                                                          |
+|-----------|----------------------------------|----------------------------------------------------------------------|
+| -profile  | \<base,fiji\>                    | Configuration profile to use.                                        |
+| --fastqs  | \</project/\*\_{R1,R2}\*.fastq\> | Directory pattern for fastq files.                                   |
+| --sras    | \</project/\*.sra\>              | Directory pattern for sra files.                                     |
+| --workDir | \</project/tmp/\>                | Nextflow working directory where all intermediate files are saved.   |
+| --email   | \<EMAIL\>                        | Where to send workflow report email.                                 |
+
+**Save Options**
+
+| Arguments  | Usage         | Description                                               |
+|------------|---------------|-----------------------------------------------------------|
+| --outdir   | \</project/\> | Specifies where to save the output from the nextflow run. |
+| --savefq   |               | Compresses and saves raw fastq reads.                     |
+| --saveTrim |               | Compresses and saves trimmed fastq reads.                 |
+| --saveAll  |               | Compresses and saves all fastq reads.                     |
+
+**Input File Options**
+
+| Arguments    | Usage       | Description                                                                  |
+|--------------|-------------|------------------------------------------------------------------------------|
+| --singleEnd  |             | Specifies that the input files are not paired reads (default is paired-end). |
+
+**Performance Options**
+
+| Arguments       | Usage       | Description                                             |
+|-----------------|-------------|---------------------------------------------------------|
+| --threadfqdump  |             | Runs multi-threading for fastq-dump for sra processing. |
+
+**QC Options**
+
+| Arguments       | Usage       | Description                                             |
+|-----------------|-------------|---------------------------------------------------------|
+| --skipMultiQC   |             | Skip running MultiQC report.                            |
+
 ### Credits
 
 * Ignacio Tripodi: Nextflow base code and structure, pipeline implementation
 * Margaret Gruca: Nextflow pipeline optimization, original pipeline design and optimization
 * Zach Maas: Testing and adding a FastQC parser
-
-### Major Changes:
-
-#### Latest Release *Version 0.4*
-* Removed fasterq-dump and replaced it with a python wrapper (*requires python 3!*) for multi-threading -- this is an option and can be used by specifying `--threadfqdump` and if specified will run on 8 cores
-* Cleaned up unused arguments
-* Generated generic files in preparation for public release
-
-#### Updates in Version 0.3
-* Replaced deeptools normalization with rcc.py
-* Added samtools view flag to generate .millionsmapped file which gives raw number of reads mapped (does not include any multi-mapping stats)
-* Added new deeptools normalization process
-* Runtime and memory requirements significantly reduced with removal of singularity and deeptools requirement
-
-#### Updates in Version 0.2
-* Fixed help message such that it will print and exit job successfully
-* Fixed memory and time cap issues that arose when trying to process larger files
-* Fixed version scraping to reflect pipeline updates
-* Added --skipMultiQC argument which skips MutliQC
-* Added --flip argument which will produce reverse complement prior to trimming
-* Added seqkit module to pipeline which has a number of utilities (including reverse complement on fa/fq) and also can be mutlithreaded
-* Added save options for all fastq files (--savefq, --saveTrim, --saveAllfq) -- by default these will not be saved the the output directory
-* Updated SRA Tools to v2.9.2 which now has fasterq-dump allowing for mutlithreading
-
-#### Added in Version 0.1
-* Offically a version associated with latest commit : v 0.1
-* hierarchical structure of directories implemented
-* changes to bbduk trim trim settings
-* addition of pileup module
-* Changed max run time, max default memory, job specific cpu/memory/time requirements that should be more universal
-* For now, in main.nf, I have commented out the flip. Most shouldn't need to be flipped, but I will also update the main_flip.nf before the end of the week such that it will mirror main.nf except for flipping -- this can be made into a flag at some point
-* removed wc and unsorted bam flagstat jobs
-* saved quite a few more qc outputs
-* added a few steps to rseqc, saved more of the outputs
-* Because I haven't gotten permission yet to build a new multiqc container, I have it running based on your user install from fiji for now. I have stated this in the README
-* added "keyword" config in the fiji.config that should be the keyword from excel -- this is also detailed in the README -- at some point I plan to be able to import this automatically
-* changed default directories to something everyone in the lab should have permissions to
-* samtools is now multiprocessing which cut the runtime down to about 1/10 of what it was
-* all required bedgraphs are now saved that will be used in downstream analysis
-* fixed an error in the dreg bigwigs that caused the pipeline to crash -- this was essentially an error in the chrom.sizes file
-* Compressing all fastq files for storage -- may choose to delete them in a later version
