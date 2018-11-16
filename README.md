@@ -42,7 +42,7 @@ MultiQC will also run by default upon completion of all previous steps. However,
 
     $ pip3 install multiqc --user
     
-This will then install the current MutliQC v1.6. Future additions to the pipeline will include a singularity container for MultiQC to remove this prerequisite.
+Remember that python3 must be in your path (if you are a Fiji user, you must module load python/3.6.3). This will then install the current MutliQC v1.6. Future additions to the pipeline will include a singularity container for MultiQC to remove this prerequisite.
 
 ##### Parallel-fastq-dump Installation
 
@@ -84,6 +84,7 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 | Arguments    | Usage       | Description                                                                  |
 |--------------|-------------|------------------------------------------------------------------------------|
 | --singleEnd  |             | Specifies that the input files are not paired reads (default is paired-end). |
+| --flip       |             | Reverse complements each strand. Necessary for some library preps.           |
 
 **Performance Options**
 
