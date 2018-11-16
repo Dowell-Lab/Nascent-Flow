@@ -71,6 +71,7 @@ def helpMessage() {
 
     Input File options:
         --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
+        --flip                         Reverse complements each strand. Necessary for some library preps.
 
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
@@ -220,6 +221,7 @@ summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
+summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
 summary['Run MultiQC']      = params.skipMultiQC ? 'NO' : 'YES'
 summary['Max Memory']       = params.max_memory
 summary['Max CPUs']         = params.max_cpus
@@ -439,14 +441,71 @@ process bbduk {
 
     script:
 //    prefix = fastq.baseName
-    if (!params.singleEnd) {
+    if (!params.singleEnd && params.flip) {
         """
         module load bbmap/38.05
         echo ${name}
+        module load seqkit/0.9.0
+
+        seqkit seq -j 16 -r -p \
+                  ${name}_R1.flip.fastq \
+                  -o ${name}.flip.fastq
+                  
+        seqkit seq -j 16 -r -p \
+                 ${name}_R2.flip.fastq \
+                 -o ${name}.flip.fastq
+
+        
 
         bbduk.sh -Xmx20g \
                   t=16 \
-                  in=${name}_R1.fastq \
+                  in=${name}_R1.flip.fastq \
+                  in2=${name}_R2.flip.fastq \
+                  out=${name}_R1.flip.trim.fastq \
+                  out2=${name}_R2.flip.trim.fastq \
+                  ref=${bbmap_adapters} \
+                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  maq=10 minlen=25 \
+                  tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                  stats=${name}.trimstats.txt \
+                  refstats=${name}.refstats.txt \
+                  ehist=${name}.ehist.txt
+        """
+    } else if (params.flip) {
+        """
+        module load bbmap/38.05
+        module load seqkit/0.9.0
+        echo ${name}
+
+
+        seqkit seq -j 16 -r -p \
+                  ${name}.fastq \
+                  -o ${name}.flip.fastq
+
+        
+        bbduk.sh -Xmx20g \
+                  t=16 \
+                  in=${name}.flip.fastq \
+                  out=${name}.flip.trim.fastq \
+                  ref=${bbmap_adapters} \
+                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  maq=10 minlen=25 \
+                  tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                  stats=${name}.trimstats.txt \
+                  refstats=${name}.refstats.txt \
+                  ehist=${name}.ehist.txt
+        """
+    }
+        else if (!params.singleEnd) {
+        """
+        module load bbmap/38.05
+        echo ${name}      
+
+        bbduk.sh -Xmx20g \
+                  t=16 \
+                  in=${name}_R1fastq \
                   in2=${name}_R2.fastq \
                   out=${name}_R1.trim.fastq \
                   out2=${name}_R2.trim.fastq \
