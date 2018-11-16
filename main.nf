@@ -100,9 +100,10 @@ params.name = false
 params.multiqc_config = "$baseDir/conf/multiqc_config.yaml"
 params.email = false
 params.plaintext_email = false
-params.bbmap_adapters = "$baseDir/conf/adapters.fa"
-params.bedGraphToBigWig = "$baseDir/conf/bedGraphToBigWig"
-params.rcc = "$baseDir/conf/rcc.py"
+params.bbmap_adapters = "$baseDir/bin/adapters.fa"
+params.bedGraphToBigWig = "$baseDir/bin/bedGraphToBigWig"
+params.rcc = "$baseDir/bin/rcc.py"
+params.workdir = "./nextflowTemp"
 
 multiqc_config = file(params.multiqc_config)
 output_docs = file("$baseDir/docs/output.md")

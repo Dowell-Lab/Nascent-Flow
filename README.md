@@ -24,7 +24,7 @@ If you are using Linux, this will install nextflow to your home directory. As su
 
 Secondly, edit `conf/slurm_grch38.config` to ensure the proper paths are set for genome reference files and other executables (look for all mentions of `COMPLETE_*`). Variable names should hopefully be self-explanatory. As of version 1.0, there are now flags by which you can provide directories containing fastqs and sras. Furthermore, you can now specify the Nextflow working directory and output directory with flags. Last, you must also now specify the email to which the report will be sent for the run.
 
-    $ nextflow run main.nf  -profile slurm_grch38 --workDir </nextflow/work/temp/> --outdir </my/project/> --email <john.doe@themailplace.com> --sras </dir/to/sras/>
+    $ nextflow run main.nf  -profile slurm_grch38 --workdir </nextflow/work/temp/> --outdir </my/project/> --email <john.doe@themailplace.com> --sras </dir/to/sras/>
     
 Notice the name of the configuration file. It's generally a good idea to keep separate configuration files for samples using different reference genomes, and different organisms. The pipeline runs ***paired-end by default***. The --singleEnd flag must be added for all single-end data. While most nascent data is single-end, Groovy configurations make paired-end processing an easier default.
 
@@ -67,7 +67,7 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 | -profile  | \<base,fiji\>                    | Configuration profile to use.                                        |
 | --fastqs  | \</project/\*\_{R1,R2}\*.fastq\> | Directory pattern for fastq files.                                   |
 | --sras    | \</project/\*.sra\>              | Directory pattern for sra files.                                     |
-| --workDir | \</project/tmp/\>                | Nextflow working directory where all intermediate files are saved.   |
+| --workdir | \</project/tmp/\>                | Nextflow working directory where all intermediate files are saved.   |
 | --email   | \<EMAIL\>                        | Where to send workflow report email.                                 |
 
 **Save Options**
