@@ -100,6 +100,9 @@ params.name = false
 params.multiqc_config = "$baseDir/conf/multiqc_config.yaml"
 params.email = false
 params.plaintext_email = false
+params.bbmap_adapters = "$baseDir/conf/adapters.fa"
+params.bedGraphToBigWig = "$baseDir/conf/bedGraphToBigWig"
+params.rcc = "$baseDir/conf/rcc.py"
 
 multiqc_config = file(params.multiqc_config)
 output_docs = file("$baseDir/docs/output.md")
@@ -811,12 +814,12 @@ process bedgraphs {
 
     rm ${name}.unsorted.bedGraph
 
-    python ${params.path_to_rcc} \
+    python ${params.rcc} \
         ${name}.bedGraph \
         ${millions_mapped} \
         ${name}.rcc.bedGraph \
 
-    python ${params.path_to_rcc} \
+    python ${params.rcc} \
         ${name}.pos.bedGraph \
         ${millions_mapped} \
         ${name}.unsorted.pos.rcc.bedGraph
@@ -824,7 +827,7 @@ process bedgraphs {
     sortBed -i ${name}.unsorted.pos.rcc.bedGraph > ${name}.pos.rcc.bedGraph
     rm ${name}.unsorted.pos.rcc.bedGraph
 
-    python ${params.path_to_rcc} \
+    python ${params.rcc} \
         ${name}.neg.bedGraph \
         ${millions_mapped} \
         ${name}.unsorted.neg.rcc.bedGraph
@@ -874,8 +877,8 @@ process dreg_prep {
 
     echo negative strand processed to bedGraph
 
-    ${params.path_to_bedGraphToBigWig} ${name}.pos.sort.bedGraph ${chrom_sizes} ${name}.pos.bw
-    ${params.path_to_bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
+    ${params.bedGraphToBigWig} ${name}.pos.sort.bedGraph ${chrom_sizes} ${name}.pos.bw
+    ${params.bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
 
     echo bedGraph to bigwig done
     """
@@ -901,8 +904,8 @@ process normalized_bigwigs {
 
     script:
     """
-    ${params.path_to_bedGraphToBigWig} ${pos_bedgraph} ${chrom_sizes} ${name}.pos.rcc.bw
-    ${params.path_to_bedGraphToBigWig} ${neg_bedgraph} ${chrom_sizes} ${name}.neg.rcc.bw
+    ${params.bedGraphToBigWig} ${pos_bedgraph} ${chrom_sizes} ${name}.pos.rcc.bw
+    ${params.bedGraphToBigWig} ${neg_bedgraph} ${chrom_sizes} ${name}.neg.rcc.bw
 
     """
 }

@@ -18,11 +18,11 @@ Install Nextflow:
 #### Slurm-Specific Usage Requirements
 ##### Primary Run Settings
 
-If you are using Linux, this will install nextflow to your home directory. As such, to run Nextflow, you will need to set the PATH to your home directory. Doing so as the following will set the PATH as a variable so you can still acess other paths (e.g. when you load modules) on your cluster without conflict:
+If you are using Linux, this will install nextflow to your home directory. As such, to run Nextflow, you will need add your user home directory to your PATH. Use the following command to set your home directory to your PATH as a variable so you can still access other paths (e.g. when you load modules) on your cluster without conflict:
 
     $export PATH=~:$PATH
 
-First and foremost, edit `conf/slurm_grch38.config` to ensure the proper paths and email address are set (look for all mentions of `COMPLETE_*`), as well as `nextflow.config`. Variable names should hopefully be self-explanatory. As of version 1.0, there are now flags by which you can provide directories containing fastqs and sras. Furthermore, you can now specify the Nextflow working directory and output directory with flags. Last, you must also now specify the email to which the report will be sent for the run.
+Secondly, edit `conf/slurm_grch38.config` to ensure the proper paths are set for genome reference files and other executables (look for all mentions of `COMPLETE_*`). Variable names should hopefully be self-explanatory. As of version 1.0, there are now flags by which you can provide directories containing fastqs and sras. Furthermore, you can now specify the Nextflow working directory and output directory with flags. Last, you must also now specify the email to which the report will be sent for the run.
 
     $ nextflow run main.nf  -profile slurm_grch38 --workDir </nextflow/work/temp/> --outdir </my/project/> --email <john.doe@themailplace.com> --sras </dir/to/sras/>
     
@@ -48,7 +48,7 @@ This will then install the current MutliQC v1.6. Future additions to the pipelin
 
 As of verison 0.4, we have implemented a wrapper for fastq-dump for multi-threading in place of fasterq-dump due to memory leak issues. This, however, requires the installation of parallel-fastq-dump to your user home. You can do so by running:
     
-    $pip3 install paralell-fastq-dump --user
+    $pip3 install parallel-fastq-dump --user
     
 This will check for the sra-tools requirement, so if you do not want this installed to your user then this dependency must already be loaded to your path (i.e. module load sra/2.9.2).
 
