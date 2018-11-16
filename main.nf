@@ -258,9 +258,11 @@ try {
  */
 process get_software_versions {
     validExitStatus 0,1
+    publishDir "${params.outdir}/software_versions/", mode: 'copy', pattern: '*.txt'
 
     output:
     file 'software_versions_mqc.yaml' into software_versions_yaml
+    file '*.txt' into software_versions_text
 
     script:
     """
@@ -278,27 +280,24 @@ process get_software_versions {
 
     echo $params.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
-    /opt/fastx-toolkit/0.0.13/bin/fastx_reverse_complement -h > v_fastx_reverse_complement.txt || true
     fastqc --version > v_fastqc.txt
-    multiqc --version > v_multiqc.txt || true
-    bbduk.sh --version > v_bbduk.txt || true
+    bbversion.sh --version > v_bbduk.txt
     hisat2 --version > v_hisat2.txt
     samtools --version > v_samtools.txt
     fasterq-dump --version > v_fastq-dump.txt
     preseq --version > v_preseq.txt
     seqkit version > v_seqkit.txt
-    echo "2.0.3" > v_preseq.txt
+    echo "2.0.3" > v_preseq.txt    
+    bedtools --version > v_bedtools.txt
+    /opt/igvtools/2.3.75/igvtools version > v_igv-tools.txt
 
     # Can't call this before running MultiQC or it breaks it
     module load python/2.7.14/rseqc
     read_distribution.py --version > v_rseqc.txt
 
-    bedtools --version > v_bedtools.txt
-    /opt/igvtools/2.3.75/igvtools version > v_igv-tools.txt
-
-#    for X in `ls *.txt`; do
-#        cat \$X >> all_versions;
-#    done
+    for X in `ls *.txt`; do
+        cat \$X >> all_versions.txt;
+    done
     scrape_software_versions.py > software_versions_mqc.yaml
     """
 }
@@ -370,7 +369,7 @@ process sra_dump {
  * STEP 1b - FastQC
  */
 
-process fastqc {
+process fastQC {
     validExitStatus 0,1
     tag "$prefix"
     memory '8 GB'
@@ -944,7 +943,7 @@ process igvtools {
 /*
  * STEP 9 - MultiQC
  */
-process multiqc {
+process multiQC {
     validExitStatus 0,1,143
     errorStrategy 'ignore'
     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
