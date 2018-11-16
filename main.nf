@@ -449,8 +449,9 @@ process bbduk {
                   out2=${name}_R2.trim.fastq \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=20 \
+                  maq=10 minlen=25 \
                   tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt \
                   ehist=${name}.ehist.txt
@@ -466,7 +467,9 @@ process bbduk {
                   out=${name}.trim.fastq \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=20 \
+                  maq=10 minlen=25 \
+                  tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt \
                   ehist=${name}.ehist.txt
@@ -587,6 +590,10 @@ process hisat2 {
  * STEP 4 - Convert to BAM format and sort
  */
 
+/*
+ * STEP 4 - Convert to BAM format and sort
+ */
+
 process samtools {
     tag "$prefix"
     memory '100 GB'
@@ -609,6 +616,17 @@ process samtools {
     prefix = mapped_sam.baseName
 // Note that the millionsmapped arugments below are only good for SE data. When PE is added, it will need to be changed to:
     // -F 0x40 rootname.sorted.bam | cut -f1 | sort | uniq | wc -l  > rootname.bam.millionsmapped
+    if (!params.singleEnd) {
+    """
+    module load samtools/1.8
+
+    samtools view -@ 16 -bS -o ${prefix}.bam ${mapped_sam}
+    samtools sort -@ 16 ${prefix}.bam > ${prefix}.sorted.bam
+    samtools flagstat ${prefix}.sorted.bam > ${prefix}.sorted.bam.flagstat
+    samtools view -@ 16 -F 0x40 ${prefix}.sorted.bam | cut -f1 | sort | uniq | wc -l > ${prefix}.sorted.bam.millionsmapped
+    samtools index ${prefix}.sorted.bam ${prefix}.sorted.bam.bai
+    """
+    } else {
     """
     module load samtools/1.8
 
@@ -618,6 +636,7 @@ process samtools {
     samtools view -@ 16 -F 0x904 -c ${prefix}.sorted.bam > ${prefix}.sorted.bam.millionsmapped
     samtools index ${prefix}.sorted.bam ${prefix}.sorted.bam.bai
     """
+    }
 }
 
 sorted_bam_ch
