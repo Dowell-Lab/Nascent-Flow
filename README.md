@@ -26,7 +26,7 @@ Secondly, edit `conf/slurm_grch38.config` to ensure the proper paths are set for
 
 ```
 
-    $ nextflow run main.nf  -profile slurm_grch38 --workdir '</nextflow/work/temp/>' --outdir '</my/project/>' --email <john.doe@themailplace.com> --sras '</dir/to/sras>'
+    $ nextflow run main.nf  -profile slurm_grch38 --workdir '</nextflow/work/temp/>' --outdir '</my/project/>' --email <john.doe@themailplace.com> --sras '</dir/to/sras/*>'
     
 ```
 
