@@ -993,7 +993,7 @@ process igvtools {
     """
     module load igvtools/2.3.75
 
-    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bg} ${name}.rpkm.tdf ${chrom_sizes}
+    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bg} ${name}.rcc.tdf ${chrom_sizes}
     """
  }
 
