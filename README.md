@@ -1,7 +1,5 @@
 # Nextflow Implementation of the Dowell Lab Nascent Pipeline
 
-For internal Dowell Lab use.
-
 ### Usage
 
 #### Download and Installation
