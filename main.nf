@@ -57,10 +57,10 @@ def helpMessage() {
 
     The typical command for running the pipeline is as follows:
 
-    nextflow run main.nf -profile fiji --fastqs '/project/*_{R1,R2}*.fastq' --outdir '/project/'
+    nextflow run main.nf -profile slurm --fastqs '/project/*_{R1,R2}*.fastq' --outdir '/project/'
 
     Required arguments:
-         -profile                      Configuration profile to use. <base, fiji>
+         -profile                      Configuration profile to use. <base, slurm>
          --fastqs                      Directory pattern for fastq files: /project/*{R1,R2}*.fastq (Required if --sras not specified)
          --sras                        Directory pattern for SRA files: /project/*.sras (Required if --fastqs not specified)
          --workdir                     Nextflow working directory where all intermediate files are saved.
@@ -268,17 +268,6 @@ process get_software_versions {
 
     script:
     """
-    module load python/2.7.14
-    module load fastx-toolkit/0.0.13
-    module load fastqc/0.11.5
-    module load bbmap/38.05
-    module load samtools/1.8
-    module load hisat2/2.1.0
-    module load preseq/2.0.3
-    module load bedtools/2.25.0
-    module load igvtools/2.3.75
-    module load sra/2.9.2
-    module load seqkit/0.9.0
 
     echo $params.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
@@ -289,12 +278,10 @@ process get_software_versions {
     fasterq-dump --version > v_fastq-dump.txt
     preseq --version > v_preseq.txt
     seqkit version > v_seqkit.txt
-    echo "2.0.3" > v_preseq.txt    
     bedtools --version > v_bedtools.txt
-    /opt/igvtools/2.3.75/igvtools version > v_igv-tools.txt
+    igvtools version > v_igv-tools.txt
 
     # Can't call this before running MultiQC or it breaks it
-    module load python/2.7.14/rseqc
     read_distribution.py --version > v_rseqc.txt
 
     for X in `ls *.txt`; do
@@ -331,7 +318,6 @@ process sra_dump {
     prefix = reads.baseName
     if (!params.threadfqdump) {
         """
-        module load sra/2.9.2
         echo ${prefix}
 
         fastq-dump ${reads}
@@ -339,8 +325,6 @@ process sra_dump {
     } else if (!params.singleEnd) {
          """
         export PATH=~/.local/bin:$PATH
-        module load sra/2.9.2
-        module load python/3.6.3
 
         parallel-fastq-dump \
             --threads 8 \
@@ -349,7 +333,6 @@ process sra_dump {
         """
     } else if (!params.threadfqdump && !params.singleEnd) {
         """
-        module load sra/2.9.2
         echo ${prefix}
 
         fastq-dump --split-3 ${reads}
@@ -357,8 +340,6 @@ process sra_dump {
     } else {
         """
         export PATH=~/.local/bin:$PATH
-        module load sra/2.9.2
-        module load python/3.6.3
 
         parallel-fastq-dump \
             --threads 8 \
@@ -387,7 +368,6 @@ process fastQC {
     script:
     prefix = reads.baseName
     """
-    module load fastqc/0.11.5
     echo ${prefix}
 
     fastqc $reads
@@ -443,9 +423,7 @@ process bbduk {
 //    prefix = fastq.baseName
     if (!params.singleEnd && params.flip) {
         """
-        module load bbmap/38.05
         echo ${name}
-        module load seqkit/0.9.0
 
         seqkit seq -j 16 -r -p \
                   ${name}_R1.flip.fastq \
@@ -474,8 +452,6 @@ process bbduk {
         """
     } else if (params.flip) {
         """
-        module load bbmap/38.05
-        module load seqkit/0.9.0
         echo ${name}
 
 
@@ -500,7 +476,6 @@ process bbduk {
     }
         else if (!params.singleEnd) {
         """
-        module load bbmap/38.05
         echo ${name}      
 
         bbduk.sh -Xmx20g \
@@ -520,7 +495,6 @@ process bbduk {
         """
     } else {
         """
-        module load bbmap/38.05
         echo ${name}
         
         bbduk.sh -Xmx20g \
@@ -560,7 +534,6 @@ process fastqc_trimmed {
     script:
     prefix = trimmed_reads.baseName
     """
-    module load fastqc/0.11.5
     echo ${prefix}
 
     fastqc $trimmed_reads
@@ -621,7 +594,6 @@ process hisat2 {
     //prefix = trimmed_reads.baseName
     if (!params.singleEnd) {
         """
-        module load hisat2/2.1.0
         echo ${name}
     
         hisat2  -p 32 \
@@ -634,7 +606,6 @@ process hisat2 {
         """
     } else {
         """
-        module load hisat2/2.1.0
         echo ${name}
     
         hisat2  -p 32 \
@@ -680,7 +651,6 @@ process samtools {
     // -F 0x40 rootname.sorted.bam | cut -f1 | sort | uniq | wc -l  > rootname.bam.millionsmapped
     if (!params.singleEnd) {
     """
-    module load samtools/1.8
 
     samtools view -@ 16 -bS -o ${prefix}.bam ${mapped_sam}
     samtools sort -@ 16 ${prefix}.bam > ${prefix}.sorted.bam
@@ -690,7 +660,6 @@ process samtools {
     """
     } else {
     """
-    module load samtools/1.8
 
     samtools view -@ 16 -bS -o ${prefix}.bam ${mapped_sam}
     samtools sort -@ 16 ${prefix}.bam > ${prefix}.sorted.bam
@@ -727,8 +696,6 @@ process preseq {
 
     script:
     """
-    module load preseq/2.0.3
-
     preseq c_curve -B -o ${name}.c_curve.txt \
            ${bam_file}
 
@@ -771,7 +738,6 @@ process rseqc {
 
     script:
     """
-    module load python/2.7.14/rseqc
 
     read_distribution.py -i ${bam_file} \
                          -r ${genome_refseq} \
@@ -806,8 +772,6 @@ process pileup {
 
     script:
     """
-    module load bbmap/38.05
-    module load samtools/1.8
 
     pileup.sh -Xmx20g \
               in=${bam_file} \
@@ -842,8 +806,6 @@ process bedgraphs {
 
     script:
     """
-    module load bedtools/2.25.0
-    module load python/2.7.14
 
     genomeCoverageBed \
                      -bg \
@@ -917,7 +879,6 @@ process dreg_prep {
 
     script:
     """
-    module load bedtools/2.25.0
 
     echo "Creating BigWigs suitable as inputs to dREG"
 
@@ -991,9 +952,7 @@ process igvtools {
 
     script:
     """
-    module load igvtools/2.3.75
-
-    /opt/igvtools/2.3.75/igvtools toTDF ${normalized_bg} ${name}.rcc.tdf ${chrom_sizes}
+    igvtools toTDF ${normalized_bg} ${name}.rcc.tdf ${chrom_sizes}
     """
  }
 
@@ -1032,7 +991,6 @@ process multiQC {
 //TO DO : Need to build a new multiqc container for the newest version
 
     """
-    module load python/3.6.3
     export PATH=~/.local/bin:$PATH
 
     multiqc . -f $rtitle $rfilename --config $multiqc_config
