@@ -48,4 +48,4 @@ Pipeline Configuration:
 
 --
 NascentFlow
-https://biof-git.colorado.edu/dowelllab/GRO-seq-workflow
+https://github.com/Dowell-Lab/Nascent-Flow

@@ -5,7 +5,7 @@
 ========================================================================================
  Nascent Transcription Analysis Pipeline. Started 2018-06-21.
  #### Homepage / Documentation
- https://biof-git.colorado.edu/dowelllab/GRO-seq-workflow
+ https://github.com/Dowell-Lab/Nascent-Flow
  #### Authors
  Ignacio Tripodi <ignacio.tripodi@colorado.edu>
  Margaret Gruca <magr0763@colorado.edu>

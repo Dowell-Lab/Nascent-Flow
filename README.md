@@ -6,7 +6,7 @@
 
 Clone this repository in your home directory:
 
-    $ git clone git@biof-git.colorado.edu:dowelllab/GRO-seq-workflow.git
+    $ git clone git@github.com:Dowell-Lab/Nascent-Flow.git
 
 Install Nextflow:
 

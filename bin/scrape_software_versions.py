@@ -37,7 +37,7 @@ for k, v in regexes.items():
 print ('''
 id: 'nascentflow-software-versions'
 section_name: 'NascentFlow Software Versions'
-section_href: 'https://biof-git.colorado.edu/dowelllab/GRO-seq-workflow'
+section_href: 'https://github.com/Dowell-Lab/Nascent-Flow'
 plot_type: 'html'
 description: 'are collected at run time from the software output.'
 data: |
