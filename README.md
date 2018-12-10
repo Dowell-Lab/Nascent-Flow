@@ -11,6 +11,10 @@ Clone this repository in your home directory:
 Install Nextflow:
 
     $ curl -s https://get.nextflow.io | bash
+
+#### Reference
+
+If you've used this in your research, you can cite this pipeline using DOI 10.17605/OSF.IO/NDHJ2 ([OSF project](https://osf.io/ndhj2/)).
     
 #### Slurm-Specific Usage Requirements
 ##### Primary Run Settings
