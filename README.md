@@ -23,7 +23,7 @@ Secondly, edit `conf/slurm_grch38.config` to ensure the proper paths are set for
 
 ```
 
-    $ nextflow run main.nf  -profile slurm_grch38 --workdir '</nextflow/work/temp/>' --outdir '</my/project/>' --email <john.doe@themailplace.com> --sras '</dir/to/sras/*>'
+    $ nextflow run main.nf -profile slurm_grch38 --workdir '</nextflow/work/temp/>' --outdir '</my/project/>' --email <john.doe@themailplace.com> --sras '</dir/to/sras/*>'
     
 ```
 
@@ -31,7 +31,7 @@ Directory paths for sras/fastqs must be enclosed in quotes. Notice the name of t
 
 If anything went wrong, you don't need to restart the pipeline from scratch. Instead...
 
-    $ nextflow run main.nf  -profile slurm_grch38 -resume
+    $ nextflow run main.nf -profile slurm_grch38 -resume
     
 To see a full list of options and pipeline version, enter:
     
