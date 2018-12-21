@@ -78,7 +78,8 @@ def helpMessage() {
         --saveAll                      Compresses and saves all fastq reads.
 
     QC Options:
-        --skipMultiQC                  Skip running MultiQC report.
+        --skipMultiQC                  Skip running MultiQC.
+        --skipRSeQC                    Skip running RSeQC.
         
     Analysis Options:
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
@@ -231,6 +232,7 @@ summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
+summary['Run RSeQC']        = params.skipRSeQC ? 'NO' : 'YES'
 summary['Run MultiQC']      = params.skipMultiQC ? 'NO' : 'YES'
 summary['Max Memory']       = params.max_memory
 summary['Max CPUs']         = params.max_cpus
@@ -736,6 +738,9 @@ process rseqc {
             else if (filename.indexOf("RPKM_saturation.saturation.r") > 0)      "RPKM_saturation/rscripts/$filename"
             else filename
         }
+    
+    when:
+    !params.skipRSeQC
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_rseqc

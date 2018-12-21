@@ -40,24 +40,26 @@ If anything went wrong, you don't need to restart the pipeline from scratch. Ins
 To see a full list of options and pipeline version, enter:
     
     $ nextflow run main.nf -profile slurm_grch38 --help
-
-##### MultiQC Installation
-
-MultiQC will also run by default upon completion of all previous steps. However, in its current configuration, you must have installed MultiQC to your home directory by running:
-
-    $ pip3 install multiqc --user
     
-Remember that python3 must be in your path. This will then install the current MutliQC v1.6. Future additions to the pipeline will include a singularity container for MultiQC to remove this prerequisite.
+##### FStitch Requirements
 
-##### Parallel-fastq-dump Installation
+FStitch can now optionally be run to segment nascent data into active and inactive regions of transcription and annotate bidirectionals (see https://github.com/Dowell-Lab/FStitch). To run FStitch, you must specify additional parameters in your config file including `FS_path` and `FS_train` which are the full path to the FStitch executable (once compiled) and the training file, respectively. See `slurm.config` for example parameterization. This option can be executed in the pipeline through the `--fstitch` argument. Please note that the FStitch bidir module is in Python3 and must also be pip installed (see below).
 
-As of verison 0.4, we have implemented a wrapper for fastq-dump for multi-threading in place of fasterq-dump due to memory leak issues. This, however, requires the installation of parallel-fastq-dump to your user home. You can do so by running:
-    
-    $pip3 install parallel-fastq-dump --user
-    
-This will check for the sra-tools requirement, so if you do not want this installed to your user then this dependency must already be loaded to your path.
+##### Python Package Requirements
 
-This has been added as an *option* and the pipeline will run fastq-dump (single core) by default. To run multi-threading on 8 cores, you must specify `--threadfqdump` as a nextflow run argument.
+***IMPORTANT: For individual users, we highly recommend installing all python packages in a virtual environment***
+
+This pipeline requires a number of optional python packages for qc and analysis. To install RSeQC, MultiQC, and FStitch, you can run the following:
+
+```
+
+$ pip3 install MultiQC --user
+$ pip3 install RSeQC --user
+$ pip3 install FStitch-Bidir --user
+
+```
+
+Note that all packages are Python3.
 
 ##### Running Nextflow Using an sbatch script
 
@@ -101,7 +103,14 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 
 | Arguments       | Usage       | Description                                             |
 |-----------------|-------------|---------------------------------------------------------|
-| --skipMultiQC   |             | Skip running MultiQC report.                            |
+| --skipMultiQC   |             | Skip running MultiQC.                                   |
+| --skipRSeQC     |             | Skip running RSeQC.                                     |
+
+**Analysis Options**
+
+| Arguments       | Usage       | Description                                                                         |
+|-----------------|-------------|-------------------------------------------------------------------------------------|
+| --fstitch       |             | Runs FStitch to segment nascent data into active/inactive regions of transcription. |
 
 ### Credits
 
