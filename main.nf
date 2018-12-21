@@ -746,7 +746,9 @@ process rseqc {
 
     script:
     """
-
+    
+    export PATH=~/.local/bin:$PATH
+    
     read_distribution.py -i ${bam_file} \
                          -r ${genome_refseq} \
                          > ${name}.read_dist.txt
@@ -1017,7 +1019,7 @@ process FStitch {
     validExitStatus 0
     publishDir "${params.outdir}/fstitch/", mode: 'copy', pattern: "*.hmminfo"
     publishDir "${params.outdir}/fstitch/segment/", mode: 'copy', pattern: "*.fstitch_seg.bed"
-    publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "*.fstitch_bidir.bed"
+    publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "*fstitch_bidir*.bed"
     publishDir "${params.outdir}/fstitch/bidirs/hist/", mode: 'copy', pattern: "*.html"
     
     when:
@@ -1029,7 +1031,7 @@ process FStitch {
     output:
     file ("*.hmminfo") into fs_train_out
     file ("*.fstitch_seg.bed") into fs_seg_out
-    file ("*.fstitch_bidir.bed") into fs_bidir_out
+    file ("*fstitch_bidir*.bed") into fs_bidir_out
     file ("*.html") into fs_bidir_plot_out
     
     script:
@@ -1064,8 +1066,8 @@ process FStitch {
         -b ${name}.fstitch_seg.bed \
         -g ${genome_refseq} \
         -o ${name}.fstitch_bidir.bed \
-        -p -s
-    
+        -p \
+        -s    
     """
 }
 
