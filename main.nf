@@ -35,13 +35,14 @@ Pipeline steps:
     6. Coverage files
         6d. BEDTools : non-normalized & nornmalized bedgraphs
         6b. BEDTools and kentUtils : 5' bigwigs for dREG & normalized bigwigs for genome browser
+        
+    7. Normalizing bigwigs for Genome Browser use
 
-    7. IGV Tools : bedGraph --> tdf
+    8. IGV Tools : bedGraph --> tdf
 
-    8. MultiQC : generate QC report for pipeline
-
-    9. Pipeline report
-
+    9. MultiQC : generate QC report for pipeline
+    
+    10. FStitch : Segment data into active and inactive transcriptional regions and annotate bidirectionals
 
 */
 
