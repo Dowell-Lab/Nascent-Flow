@@ -33,10 +33,8 @@ Pipeline steps:
         5c. Pileup.sh : BBMap Suite -- genomic coverage by chromosome, GC content, pos/neg reads, intron/exon ratio
 
     6. Coverage files
-        6a. deepTools : normalized bigwigs
-        6b. BEDTools and kentUtils : 5' bigwigs for dREG
-        6c. deepTools : normalized bedgraphs
-        6d. BEDTools : non-normalized bedgraphs
+        6d. BEDTools : non-normalized & nornmalized bedgraphs
+        6b. BEDTools and kentUtils : 5' bigwigs for dREG & normalized bigwigs for genome browser
 
     7. IGV Tools : bedGraph --> tdf
 
@@ -81,6 +79,9 @@ def helpMessage() {
 
     QC Options:
         --skipMultiQC                  Skip running MultiQC report.
+        
+    Analysis Options:
+        --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
 
     """.stripIndent()
 }
@@ -121,16 +122,20 @@ if ( params.chrom_sizes ){
     if( !chrom_sizes.exists() ) exit 1, "Genome chrom sizes file not found: ${params.chrom_sizes}"
  }
 
-if ( params.bbmap_adapters ){
-    bbmap_adapters = file("${params.bbmap_adapters}")
-}
-
 if ( params.hisat2_indices ){
     hisat2_indices = file("${params.hisat2_indices}")
 }
 
 if ( params.genome_refseq ){
     genome_refseq = file("${params.genome_refseq}")
+}
+
+if ( params.FS_path ){
+    FS_path = file("${params.FS_path}")
+}
+
+if ( params.FS_train){
+    FS_train = file("${params.FS_train}")
 }
 
 // Has the run name been specified by the user?
@@ -227,6 +232,9 @@ summary['Max Memory']       = params.max_memory
 summary['Max CPUs']         = params.max_cpus
 summary['Max Time']         = params.max_time
 summary['Output dir']       = params.outdir
+summary['FStitch']          = params.fstitch
+if(params.fstitch)summary['FStitch dir']      = params.FS_path
+if(params.fstitch)summary['FStitch train']    = params.FS_train
 summary['Working dir']      = workflow.workDir
 summary['Container Engine'] = workflow.containerEngine
 if(workflow.containerEngine) summary['Container'] = workflow.container
@@ -280,6 +288,7 @@ process get_software_versions {
     seqkit version > v_seqkit.txt
     bedtools --version > v_bedtools.txt
     igvtools version > v_igv-tools.txt
+    echo $params.FS_path train --version > v_fstitch.txt
 
     # Can't call this before running MultiQC or it breaks it
     read_distribution.py --version > v_rseqc.txt
@@ -308,11 +317,6 @@ process sra_dump {
 
     output:
     set val(prefix), file("*.fastq") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_gzip_sra
-
-/* Updated to new version of sra tools which has "fasterq-dump" -- automatically splits files that have multiple reads
-  * (i.e. paired-end data) and is much quicker relative to fastq-dump. Also has multi-threading (currently set with -e 8)
-  * and requires a temp directory which is set to the nextflow temp directory
-  */
 
     script:
     prefix = reads.baseName
@@ -799,7 +803,8 @@ process bedgraphs {
     set val(name), file(millions_mapped) from bam_milmapped_bedgraph
 
     output:
-    set val(name), file("*.bedGraph") into non_normalized_bedgraphs
+    set val(name), file("*{pos,neg}.bedGraph") into stranded_non_normalized_bedgraphs
+    set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg
     set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
     set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
     set val(name), file("${name}.neg.rcc.bedGraph") into bedgraph_bigwig_neg
@@ -997,10 +1002,70 @@ process multiQC {
     """
 }
 
+/*
+ * STEP 10 - FStitch
+ */
+
+process fstitch {
+    validExitStatus 0
+    publishDir "${params.outdir}/fstitch/", mode: 'copy', pattern: "*.hmminfo"
+    publishDir "${params.outdir}/fstitch/segment/", mode: 'copy', pattern: "*.fstitch_seg.bed"
+    publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "*.fstitch_bidir.bed"
+    publishDir "${params.outdir}/fstitch/bidirs/hist/", mode: 'copy', pattern: "*.html"
+    
+    when:
+    params.fstitch
+    
+    input:
+    set val(name), file(bg) from fstitch_bg
+        
+    output:
+    file ("*.hmminfo") into fs_train_out
+    file ("*.fstitch_seg.bed") into fs_seg_out
+    file ("*.fstitch_bidir.bed") into fs_bidir_out
+    file ("*.html") into fs_bidir_plot_out
+    
+    script:
+    """
+    ${FS_path} train \
+        -s + \
+        -b ${bg} \
+        -t ${FS_train} \
+        -o ${name}.fstitch.hmminfo
+        
+     ${FS_path} segment \
+        -s + \
+        -b ${bg} \
+        -p ${name}.fstitch.hmminfo \
+        -o ${name}.pos.fstitch_seg.bed \
+
+     ${FS_path} segment \
+        -s - \
+        -b ${bg} \
+        -p ${name}.fstitch.hmminfo \
+        -o ${name}.neg.fstitch_seg.bed \
+
+    cat ${name}.pos.fstitch.bed \
+        ${name}.neg.fstitch.bed \
+        | sortBed > ${name}.fstitch_seg.bed
+
+### Use segment data to define bidirectional regions of interest -- MUST BE pip3 installed
+
+    export PATH=~/.local/bin:$PATH
+
+    bidir \
+        -b ${name}.fstitch.bed \
+        -g ${genome_refseq} \
+        -o ${name}.fstitch_bidir.bed \
+        -p -s
+    
+    """
+}
+
 
 
 /*
- * STEP 10 - Output Description HTML
+ * STEP 11 - Output Description HTML
  */
 //
 //process output_documentation {
