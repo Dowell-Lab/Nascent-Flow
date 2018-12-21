@@ -130,6 +130,10 @@ if ( params.genome_refseq ){
     genome_refseq = file("${params.genome_refseq}")
 }
 
+if ( params.bbmap_adapters){
+    bbmap_adapters = file("${params.bbmap_adapters}")
+}
+
 if ( params.FS_path ){
     FS_path = file("${params.FS_path}")
 }
@@ -283,7 +287,7 @@ process get_software_versions {
     bbversion.sh --version > v_bbduk.txt
     hisat2 --version > v_hisat2.txt
     samtools --version > v_samtools.txt
-    fasterq-dump --version > v_fastq-dump.txt
+    fastq-dump --version > v_fastq-dump.txt
     preseq --version > v_preseq.txt
     seqkit version > v_seqkit.txt
     bedtools --version > v_bedtools.txt
@@ -1006,7 +1010,10 @@ process multiQC {
  * STEP 10 - FStitch
  */
 
-process fstitch {
+process FStitch {
+    tag "$name"
+    memory '50 GB'
+    time '1h'
     validExitStatus 0
     publishDir "${params.outdir}/fstitch/", mode: 'copy', pattern: "*.hmminfo"
     publishDir "${params.outdir}/fstitch/segment/", mode: 'copy', pattern: "*.fstitch_seg.bed"
@@ -1037,16 +1044,16 @@ process fstitch {
         -s + \
         -b ${bg} \
         -p ${name}.fstitch.hmminfo \
-        -o ${name}.pos.fstitch_seg.bed \
+        -o ${name}.pos.fstitch_seg.bed
 
      ${FS_path} segment \
         -s - \
         -b ${bg} \
         -p ${name}.fstitch.hmminfo \
-        -o ${name}.neg.fstitch_seg.bed \
+        -o ${name}.neg.fstitch_seg.bed
 
-    cat ${name}.pos.fstitch.bed \
-        ${name}.neg.fstitch.bed \
+    cat ${name}.pos.fstitch_seg.bed \
+        ${name}.neg.fstitch_seg.bed \
         | sortBed > ${name}.fstitch_seg.bed
 
 ### Use segment data to define bidirectional regions of interest -- MUST BE pip3 installed
@@ -1054,7 +1061,7 @@ process fstitch {
     export PATH=~/.local/bin:$PATH
 
     bidir \
-        -b ${name}.fstitch.bed \
+        -b ${name}.fstitch_seg.bed \
         -g ${genome_refseq} \
         -o ${name}.fstitch_bidir.bed \
         -p -s
