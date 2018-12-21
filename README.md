@@ -52,11 +52,9 @@ FStitch can now optionally be run to segment nascent data into active and inacti
 This pipeline requires a number of optional python packages for qc and analysis. To install RSeQC, MultiQC, and FStitch, you can run the following:
 
 ```
-
 $ pip3 install MultiQC --user
 $ pip3 install RSeQC --user
 $ pip3 install FStitch-Bidir --user
-
 ```
 
 Note that all packages are Python3.
