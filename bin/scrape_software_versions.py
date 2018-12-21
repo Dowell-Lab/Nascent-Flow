@@ -12,7 +12,6 @@ regexes = {
     'fasterq-dump': ['v_fasterq-dump.txt', r"fasterq-dump : (\S+)"],
     'Bedtools': ['v_bedtools.txt', r"bedtools v(\S+)"],
     'IGV Tools': ['v_igv-tools.txt', r"IGV Version (\S+)"],
-    'FastX Reverse Complement': ['v_fastx_reverse_complement.txt', r"FASTX Toolkit (\S+) by"],
     'BBduk': ['v_bbduk.txt', r"BBDuk Trimming version(\S+)"],
     'Hisat2': ['v_hisat2.txt', r"hisat2-align-s version (\S+)"],
     'preseq': ['v_preseq.txt', r"Preseq version(\S+)"],
