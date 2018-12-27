@@ -85,7 +85,6 @@ def helpMessage() {
     Analysis Options:
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
-        --mpi                          If tfit is specified, adding --mpi will run tfit across the number specified nodes. Default = 2.
 
     """.stripIndent()
 }
