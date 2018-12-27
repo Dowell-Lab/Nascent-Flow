@@ -18,6 +18,7 @@ regexes = {
     'RseQC': ['v_rseqc.txt', r"RSeQC version(\S+)"],
     'seqkit': ['v_seqkit.txt', r"seqkit version(\S+)"],
     'FStitch': ['v_fstitch.txt', r"FStitch version(\S+)"],
+    'Tfit': ['v_tfit.txt', r"Tfit version(\S+)"],
 }
 results = OrderedDict()
 results['NascentFlow'] = '<span style="color:#999999;\">N/A</span>'

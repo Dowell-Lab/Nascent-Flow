@@ -84,6 +84,8 @@ def helpMessage() {
         
     Analysis Options:
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
+        --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
+        --mpi                          If tfit is specified, adding --mpi will run tfit across the number specified nodes. Default = 2.
 
     """.stripIndent()
 }
@@ -142,6 +144,10 @@ if ( params.FS_path ){
 
 if ( params.FS_train){
     FS_train = file("${params.FS_train}")
+}
+
+if ( params.Tfit_path){
+    Tfit_path = file("${params.Tfit_path}")
 }
 
 // Has the run name been specified by the user?
@@ -240,8 +246,11 @@ summary['Max CPUs']         = params.max_cpus
 summary['Max Time']         = params.max_time
 summary['Output dir']       = params.outdir
 summary['FStitch']          = params.fstitch
+summary['Tfit']             = params.tfit
 if(params.fstitch)summary['FStitch dir']      = params.FS_path
 if(params.fstitch)summary['FStitch train']    = params.FS_train
+if(params.tfit)summary['Tfit dir']      = params.Tfit_path
+if(params.mpi)summary['Tfit Nodes']      = params.mpi
 summary['Working dir']      = workflow.workDir
 summary['Container Engine'] = workflow.containerEngine
 if(workflow.containerEngine) summary['Container'] = workflow.container
@@ -274,7 +283,7 @@ try {
  * Parse software version numbers
  */
 process get_software_versions {
-    validExitStatus 0,1
+    validExitStatus 0,1,127
     publishDir "${params.outdir}/software_versions/", mode: 'copy', pattern: '*.txt'
 
     output:
@@ -283,7 +292,6 @@ process get_software_versions {
 
     script:
     """
-
     echo $params.version > v_pipeline.txt
     echo $workflow.nextflow.version > v_nextflow.txt
     fastqc --version > v_fastqc.txt
@@ -291,13 +299,15 @@ process get_software_versions {
     hisat2 --version > v_hisat2.txt
     samtools --version > v_samtools.txt
     fastq-dump --version > v_fastq-dump.txt
-    preseq --version > v_preseq.txt
+    preseq > v_preseq.txt
     seqkit version > v_seqkit.txt
     bedtools --version > v_bedtools.txt
     igvtools version > v_igv-tools.txt
     echo $params.FS_path train --version > v_fstitch.txt
+    echo $params.Tfit_path model --version > v_tfit.txt
 
     # Can't call this before running MultiQC or it breaks it
+    export PATH=~/.local/bin:$PATH
     read_distribution.py --version > v_rseqc.txt
 
     for X in `ls *.txt`; do
@@ -639,22 +649,22 @@ process hisat2 {
  */
 
 process samtools {
-    tag "$prefix"
+    tag "$name"
     memory '100 GB'
     cpus 16
-    publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam"
-    publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${prefix}.sorted.bam.bai"
-    publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${prefix}.sorted.bam.flagstat"
-    publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${prefix}.sorted.bam.millionsmapped"
+    publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam"
+    publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam.bai"
+    publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.flagstat"
+    publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.millionsmapped"
 
     input:
     set val(name), file(mapped_sam) from hisat2_sam
 
     output:
-    set val(name), file("${prefix}.sorted.bam") into sorted_bam_ch
-    set val(name), file("${prefix}.sorted.bam.bai") into sorted_bam_indices_ch
-    set val(name), file("${prefix}.sorted.bam.flagstat") into bam_flagstat
-    set val(name), file("${prefix}.sorted.bam.millionsmapped") into bam_milmapped_bedgraph
+    set val(name), file("${name}.sorted.bam") into sorted_bam_ch
+    set val(name), file("${name}.sorted.bam.bai") into sorted_bam_indices_ch
+    set val(name), file("${name}.sorted.bam.flagstat") into bam_flagstat
+    set val(name), file("${name}.sorted.bam.millionsmapped") into bam_milmapped_bedgraph
 
     script:
     prefix = mapped_sam.baseName
@@ -663,20 +673,20 @@ process samtools {
     if (!params.singleEnd) {
     """
 
-    samtools view -@ 16 -bS -o ${prefix}.bam ${mapped_sam}
-    samtools sort -@ 16 ${prefix}.bam > ${prefix}.sorted.bam
-    samtools flagstat ${prefix}.sorted.bam > ${prefix}.sorted.bam.flagstat
-    samtools view -@ 16 -F 0x40 ${prefix}.sorted.bam | cut -f1 | sort | uniq | wc -l > ${prefix}.sorted.bam.millionsmapped
-    samtools index ${prefix}.sorted.bam ${prefix}.sorted.bam.bai
+    samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
+    samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
+    samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
+    samtools view -@ 16 -F 0x40 ${name}.sorted.bam | cut -f1 | sort | uniq | wc -l > ${prefix}.sorted.bam.millionsmapped
+    samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
     """
     } else {
     """
 
-    samtools view -@ 16 -bS -o ${prefix}.bam ${mapped_sam}
-    samtools sort -@ 16 ${prefix}.bam > ${prefix}.sorted.bam
-    samtools flagstat ${prefix}.sorted.bam > ${prefix}.sorted.bam.flagstat
-    samtools view -@ 16 -F 0x904 -c ${prefix}.sorted.bam > ${prefix}.sorted.bam.millionsmapped
-    samtools index ${prefix}.sorted.bam ${prefix}.sorted.bam.bai
+    samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
+    samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
+    samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
+    samtools view -@ 16 -F 0x904 -c ${name}.sorted.bam > ${name}.sorted.bam.millionsmapped
+    samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
     """
     }
 }
@@ -816,7 +826,7 @@ process bedgraphs {
 
     output:
     set val(name), file("*{pos,neg}.bedGraph") into stranded_non_normalized_bedgraphs
-    set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg
+    set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg
     set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
     set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
     set val(name), file("${name}.neg.rcc.bedGraph") into bedgraph_bigwig_neg
@@ -1077,10 +1087,60 @@ process FStitch {
     """
 }
 
+/*
+ * STEP 11 - Tfit
+ */
 
+process tfit {
+    tag "$name"
+    memory '200 GB'
+    time '24h'
+    validExitStatus 0
+    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*.bed"
+    publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+    
+    when:
+    params.tfit
+    
+    input:
+    set val(name), file (bidirs) from fs_bidir_out
+    set val(name), file(bg) from tfit_bg
+        
+    output:
+    file ("*.bed") into tfit_bed_out
+    file ("*.tsv") into tfit_full_model_out
+    file ("*.log") into tfit_logs_out
+        
+    script:
+    if (params.mpi) {
+    """
+    export OMP_NUM_THREADS=16
+    
+    mpirun -np ${params.mpi} ${Tfit_path} model \
+        -bg ${bg} \
+        -s ${bidirs} \
+        -N $name \
+        -l \
+        -o ${name}.tfit_bidirs.bed \
+        --threads 16 \
+    """
+    } else {
+    """
+    export OMP_NUM_THREADS=16
+    
+    ${Tfit_path} model \
+        -bg ${bg} \
+        -s ${bidirs} \
+        -N $name \
+        -l \
+        -o ${name}.tfit_bidirs.bed \
+        --threads 16 \
+    """
+    }
+}
 
 /*
- * STEP 11 - Output Description HTML
+ * STEP 12 - Output Description HTML
  */
 //
 //process output_documentation {
