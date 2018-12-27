@@ -1093,7 +1093,9 @@ process FStitch {
 process tfit {
     tag "$name"
     memory '200 GB'
-    time '24h'
+    time '48h'
+    cpus 16
+    queue 'long'
     validExitStatus 0
     publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*.bed"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
