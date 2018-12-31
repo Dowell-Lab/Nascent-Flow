@@ -43,7 +43,11 @@ To see a full list of options and pipeline version, enter:
     
 ##### FStitch Requirements
 
-FStitch can now optionally be run to segment nascent data into active and inactive regions of transcription and annotate bidirectionals (see https://github.com/Dowell-Lab/FStitch). To run FStitch, you must specify additional parameters in your config file including `FS_path` and `FS_train` which are the full path to the FStitch executable (once compiled) and the training file, respectively. See `slurm.config` for example parameterization. This option can be executed in the pipeline through the `--fstitch` argument. Please note that the FStitch bidir module is in Python3 and must also be pip installed (see below).
+FStitch can now optionally be run to segment nascent data into active and inactive regions of transcription and annotate bidirectionals (see https://github.com/Dowell-Lab/FStitch). To run FStitch, you must specify additional parameters in your config file including `FS_path` and `FS_train` which are the full path to the FStitch executable (once compiled) and the training file, respectively. See `slurm.config` for example parameterization. This option can be executed in the pipeline through the `--fstitch` argument. Please note that the FStitch bidir module is in Python3 and must also be pip installed (see Python Package Requirements).
+
+##### Tfit Requirements
+
+Tfit is also now included in the pipeline and will model RNAPII activity using the `model` module (see https://github.com/Dowell-Lab/Tfit). Running Tfit in the pipeline requires that the user also runs FStitch as the `bidir` module will be used to gernerate regions of putitive activity to model. Only the default Tfit parameters are used, and there may be additional options that will help refine your data. This will typically take a long time to run (2-48hrs depending on dataset complexity) based on the default 16 thread usage allocation, so be sure to plan accordingly if you include this in the pipeline.
 
 ##### Python Package Requirements
 
@@ -109,6 +113,7 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 | Arguments       | Usage       | Description                                                                         |
 |-----------------|-------------|-------------------------------------------------------------------------------------|
 | --fstitch       |             | Runs FStitch to segment nascent data into active/inactive regions of transcription. |
+| --tfit          |             | Runs Tfit to model RNAPII activity. Must be run in conjunction with FStitch (--fstitch).|
 
 ### Credits
 

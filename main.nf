@@ -597,7 +597,7 @@ process hisat2 {
     // now, and the next process will blow up from missing a SAM file instead.
     //errorStrategy 'ignore'
     tag "$name"
-    validExitStatus 0,143
+    validExitStatus 0
     cpus 32
     memory '100 GB'
     time '2h'
