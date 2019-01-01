@@ -1034,7 +1034,8 @@ process FStitch {
     validExitStatus 0
     publishDir "${params.outdir}/fstitch/", mode: 'copy', pattern: "*.hmminfo"
     publishDir "${params.outdir}/fstitch/segment/", mode: 'copy', pattern: "*.fstitch_seg.bed"
-    publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "*fstitch_bidir*.bed"
+    publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "*fstitch_bidir.bed"
+    publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "*fstitch_bidir.{short,long}.bed"
     publishDir "${params.outdir}/fstitch/bidirs/hist/", mode: 'copy', pattern: "*.html"
     publishDir "${params.outdir}/fstitch/bidirs/stats/", mode: 'copy', pattern: "*.txt"
     
@@ -1047,7 +1048,8 @@ process FStitch {
     output:
     file ("*.hmminfo") into fs_train_out
     file ("*.fstitch_seg.bed") into fs_seg_out
-    file ("*fstitch_bidir*.bed") into fs_bidir_out
+    file ("*fstitch_bidir.bed") into fs_bidir_out
+    file ("*fstitch_bidir.{short,long}.bed") into fs_bidir_short_long_out
     file ("*.html") into fs_bidir_plot_out
     file ("*.txt") into fs_bidir_stats_out
     
