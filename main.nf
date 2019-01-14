@@ -198,8 +198,6 @@ else {
 }
 
 
-
-
 // Header log info
 log.info """=======================================================
 NascentFlow v${params.version}"
