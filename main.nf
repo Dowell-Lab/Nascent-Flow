@@ -187,34 +187,15 @@ else {
 }
 
 if (params.sras) {
-    if (params.singleEnd) {
-    println("Pattern for SRAs provided")
+    println("pattern for SRAs provided")
     read_files_sra = Channel
                         .fromPath(params.sras)
                         .map { file -> tuple(file.baseName, file) }
-    } else {
-         Channel
-             .fromFilePairs( params.sras, size: params.singleEnd ? 1 : 2 )
-             .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
-             .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip }
-    }
 }
 
 else {
     read_files_sra = Channel.empty()
 }
-
-//if (params.sras) {
-//        sra_strings.into { read_files_fastqc; read_files_trimming }
-//}
-
-//if (params.sra_dir_pattern == "" && params.fastq_dir_pattern == "") {
-//     Channel
-//         .fromFilePairs( params.reads, size: params.singleEnd ? 1 : 2 )
-//         .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
-//         .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip }
-// }
-
 
 
 
@@ -327,12 +308,13 @@ process sra_dump {
     else {
         cpus 1
     }
-
+    
     input:
     set val(prefix), file(reads) from read_files_sra
 
     output:
     set val(prefix), file("*.fastq") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_gzip_sra
+   
 
     script:
     prefix = reads.baseName
@@ -386,7 +368,6 @@ process fastQC {
     file "*.{zip,html,txt}" into fastqc_results
 
     script:
-    prefix = reads.baseName
     """
     echo ${prefix}
 
@@ -500,7 +481,7 @@ process bbduk {
 
         bbduk.sh -Xmx20g \
                   t=16 \
-                  in=${name}_R1fastq \
+                  in=${name}_R1.fastq \
                   in2=${name}_R2.fastq \
                   out=${name}_R1.trim.fastq \
                   out2=${name}_R2.trim.fastq \
@@ -580,7 +561,6 @@ process gzip_trimmed {
     set val(prefix), file("*.gz") into trimmed_gzip
 
     script:
-    prefix = trimmed_reads.baseName
     """
     gzip -c $trimmed_reads > ${prefix}.fastq.gz
     """
