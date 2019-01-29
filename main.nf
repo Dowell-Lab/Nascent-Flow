@@ -85,6 +85,7 @@ def helpMessage() {
     Analysis Options:
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
+        --DAStk
 
     """.stripIndent()
 }
@@ -147,6 +148,10 @@ if ( params.FS_train){
 
 if ( params.Tfit_path){
     Tfit_path = file("${params.Tfit_path}")
+}
+
+if ( params.MOTIF_PATH){
+    MOTIF_PATH = file("${params.MOTIF_PATH}")
 }
 
 // Has the run name been specified by the user?
@@ -225,6 +230,7 @@ summary['Max Time']         = params.max_time
 summary['Output dir']       = params.outdir
 summary['FStitch']          = params.fstitch
 summary['Tfit']             = params.tfit
+summary['DAStk']            = params.DAStk
 if(params.fstitch)summary['FStitch dir']      = params.FS_path
 if(params.fstitch)summary['FStitch train']    = params.FS_train
 if(params.tfit)summary['Tfit dir']      = params.Tfit_path
@@ -802,7 +808,8 @@ process bedgraphs {
     set val(name), file(millions_mapped) from bam_milmapped_bedgraph
 
     output:
-    set val(name), file("*{pos,neg}.bedGraph") into stranded_non_normalized_bedgraphs
+    set val(name), file("*pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
+    set val(name), file("*neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
     set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg
     set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
     set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
@@ -1022,6 +1029,8 @@ process FStitch {
     
     input:
     set val(name), file(bg) from fstitch_bg
+    set val(name), file(pos_bg) from pos_fstitch_bg
+    set val(name), file(neg_bg) from neg_fstitch_bg
         
     output:
     file ("*.hmminfo") into fs_train_out
@@ -1041,13 +1050,13 @@ process FStitch {
         
      ${FS_path} segment \
         -s + \
-        -b ${bg} \
+        -b ${pos_bg} \
         -p ${name}.fstitch.hmminfo \
         -o ${name}.pos.fstitch_seg.bed
 
      ${FS_path} segment \
         -s - \
-        -b ${bg} \
+        -b ${neg_bg} \
         -p ${name}.fstitch.hmminfo \
         -o ${name}.neg.fstitch_seg.bed
 
@@ -1095,19 +1104,6 @@ process tfit {
     file ("*.log") into tfit_logs_out
         
     script:
-    if (params.mpi) {
-    """
-    export OMP_NUM_THREADS=16
-    
-    mpirun -np ${params.mpi} ${Tfit_path} model \
-        -bg ${bg} \
-        -s ${bidirs} \
-        -N $name \
-        -l \
-        -o ${name}.tfit_bidirs.bed \
-        --threads 16 \
-    """
-    } else {
     """
     export OMP_NUM_THREADS=16
     
@@ -1119,8 +1115,39 @@ process tfit {
         -o ${name}.tfit_bidirs.bed \
         --threads 16 \
     """
-    }
 }
+
+/*
+ * STEP 12 - DAStk -- MD scores
+ */
+
+process DAStk {
+    tag "$prefix"
+    memory '20 GB'
+    time '2h'
+    cpus 16
+    validExitStatus 0
+    publishDir "${params.outdir}/DAStk", mode: 'copy', pattern: "*.bed"
+    
+    when:
+    params.DAStk
+    
+    input:
+    set val(prefix), file (tfit) from tfit_bed_out
+        
+    output:
+    file ("*.bed") into DAStk_bed_out
+        
+    script:
+    """
+    process_atac \
+        --prefix SRR \
+        --threads 16 \
+        --atac-peaks ${tfit} \
+        --motif-path ${MOTIF_PATH} \
+    """
+}
+
 
 /*
  * STEP 12 - Output Description HTML
