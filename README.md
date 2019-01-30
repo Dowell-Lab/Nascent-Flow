@@ -23,7 +23,7 @@ If you are using Linux, this will install nextflow to your home directory. As su
 
     $export PATH=~:$PATH
 
-Secondly, edit `conf/slurm_grch38.config` to ensure the proper paths are set for genome reference files and other executables (look for all mentions of `COMPLETE_*`). Variable names should hopefully be self-explanatory. As of version 1.0, there are now flags by which you can provide directories containing fastqs and sras. Furthermore, you can now specify the Nextflow working directory and output directory with flags. Last, you must also now specify the email to which the report will be sent for the run.
+Secondly, edit the appropriate config file, e.g. `conf/slurm_grch38.config`, to ensure the proper paths are set for genome reference files and other executables (look for all mentions of `COMPLETE_*`). Variable names should hopefully be self-explanatory. Note that Tfit/FStitch are optional, so you do not need to fill those paths unless you plan to run those in the pipeline. See below for more Tfit/FStitch details. As of version 1.0, there are now flags by which you can provide directories containing fastqs and sras. Furthermore, you can now specify the Nextflow working directory and output directory with flags. Last, you must also now specify the email to which the report will be sent for the run.
 
 ```
 
@@ -114,6 +114,7 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 |-----------------|-------------|-------------------------------------------------------------------------------------|
 | --fstitch       |             | Runs FStitch to segment nascent data into active/inactive regions of transcription. |
 | --tfit          |             | Runs Tfit to model RNAPII activity. Must be run in conjunction with FStitch (--fstitch).|
+| --prelimtfit    |             | Runs Tfit to model RNAPII activity. Does not require FStitch; uses Tfit prelim module.|
 
 ### Credits
 
