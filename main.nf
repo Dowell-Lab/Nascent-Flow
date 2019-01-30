@@ -878,7 +878,7 @@ process dreg_prep {
     validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
-    memory '100 GB'
+    memory '150 GB'
     publishDir "${params.outdir}/mapped/dreg_input", mode: 'copy', pattern: "*.bw"
 
     input:
