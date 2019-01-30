@@ -85,6 +85,7 @@ def helpMessage() {
     Analysis Options:
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
+        --prelimtfit                   Run Tfit using the built-in prelim module. FStitch not required with this setting.
         --DAStk
 
     """.stripIndent()
@@ -229,6 +230,7 @@ summary['Max CPUs']         = params.max_cpus
 summary['Max Time']         = params.max_time
 summary['Output dir']       = params.outdir
 summary['FStitch']          = params.fstitch
+summary['Prelim Tfit']      = params.prelimtfit
 summary['Tfit']             = params.tfit
 summary['DAStk']            = params.DAStk
 if(params.fstitch)summary['FStitch dir']      = params.FS_path
@@ -810,7 +812,7 @@ process bedgraphs {
     output:
     set val(name), file("*pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
     set val(name), file("*neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
-    set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg
+    set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg
     set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
     set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
     set val(name), file("${name}.neg.rcc.bedGraph") into bedgraph_bigwig_neg
@@ -1083,12 +1085,12 @@ process FStitch {
 
 process tfit {
     tag "$name"
-    memory '20 GB'
-    time '48h'
+    memory '25 GB'
+    time '24h'
     cpus 16
-    queue 'long'
+    queue 'short'
     validExitStatus 0
-    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*.bed"
+    publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
     
     when:
@@ -1099,22 +1101,66 @@ process tfit {
     set val(name), file(bg) from tfit_bg
         
     output:
-    file ("*.bed") into tfit_bed_out
+    file ("*tfit_bidirs.bed") into tfit_bed_out
     file ("*.tsv") into tfit_full_model_out
     file ("*.log") into tfit_logs_out
         
     script:
-    """
-    export OMP_NUM_THREADS=16
+        """
+        export OMP_NUM_THREADS=16
+        
+        ${Tfit_path} model \
+            -bg ${bg} \
+            -s ${bidirs} \
+            -N $name \
+            -l \
+            -o ${name}.tfit_bidirs.bed \
+            --threads 16 \
+        """
+}
+
+process prelimtfit {
+    tag "$name"
+    memory '25 GB'
+    time '24h'
+    cpus 16
+    queue 'short'
+    validExitStatus 0
+    publishDir "${params.outdir}/prelimtfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
+    publishDir "${params.outdir}/prelimtfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+    publishDir "${params.outdir}/prelimtfit/prelim", mode: 'copy', pattern: "*tfit_prelim.bed"
     
-    ${Tfit_path} model \
-        -bg ${bg} \
-        -s ${bidirs} \
-        -N $name \
-        -l \
-        -o ${name}.tfit_bidirs.bed \
-        --threads 16 \
-    """
+    when:
+    params.prelimtfit
+    
+    input:
+    set val(name), file(bg) from prelimtfit_bg
+        
+    output:
+    file ("*tfit_prelim.bed") into tfit_prelim_out
+    file ("*tfit_bidirs.bed") into prelimtfit_bed_out
+    file ("*.tsv") into prelimtfit_full_model_out
+    file ("*.log") into prelimtfit_logs_out
+        
+    script:
+        """
+        export OMP_NUM_THREADS=16
+        
+        ${Tfit_path} prelim \
+            -bg ${bg} \
+            -N $name \
+            -l \
+            -o ${name}.tfit_prelim.bed \
+            --threads 16
+        
+        ${Tfit_path} model \
+            -bg ${bg} \
+            -s ${name}.tfit_prelim.bed \
+            -N $name \
+            -l \
+            -o ${name}.tfit_bidirs.bed \
+            --threads 16
+        """
 }
 
 /*
