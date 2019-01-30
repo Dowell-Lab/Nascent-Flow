@@ -86,7 +86,6 @@ def helpMessage() {
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
         --prelimtfit                   Run Tfit using the built-in prelim module. FStitch not required with this setting.
-        --DAStk
 
     """.stripIndent()
 }
