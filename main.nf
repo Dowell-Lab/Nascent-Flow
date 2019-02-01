@@ -293,10 +293,6 @@ process get_software_versions {
     echo $params.FS_path train --version > v_fstitch.txt
     echo $params.Tfit_path model --version > v_tfit.txt
 
-    # Can't call this before running MultiQC or it breaks it
-    export PATH=~/.local/bin:$PATH
-    read_distribution.py --version > v_rseqc.txt
-
     for X in `ls *.txt`; do
         cat \$X >> all_versions.txt;
     done
