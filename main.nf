@@ -76,6 +76,7 @@ def helpMessage() {
         --outdir                       Specifies where to save the output from the nextflow run.
         --savefq                       Compresses and saves raw fastq reads.
         --saveTrim                     Compresses and saves trimmed fastq reads.
+        --skipBAM                      Skip saving BAM files. Only CRAM files will be saved with this option.
         --saveAll                      Compresses and saves all fastq reads.
 
     QC Options:
@@ -219,6 +220,7 @@ summary['Genome Ref']       = params.genome
 summary['Thread fqdump']    = params.threadfqdump ? 'YES' : 'NO'
 summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
+summary['Save BAM']         = params.skipBAM ? 'NO' : 'YES'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
@@ -415,6 +417,7 @@ process bbduk {
     validExitStatus 0,1
     tag "$name"
     cpus 16
+    time '2h'
     memory '20 GB'
     publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.txt"
 
@@ -577,10 +580,6 @@ process gzip_trimmed {
  */
 
 process hisat2 {
-    // NOTE: this is poorly written and sends output there even in
-    // successful (exit code 0) termination, so we have to ignore errors for
-    // now, and the next process will blow up from missing a SAM file instead.
-    //errorStrategy 'ignore'
     tag "$name"
     validExitStatus 0
     cpus 32
@@ -623,11 +622,6 @@ process hisat2 {
     }
 }
 
-
-/*
- * STEP 4 - Convert to BAM format and sort
- */
-
 /*
  * STEP 4 - Convert to BAM format and sort
  */
@@ -636,10 +630,21 @@ process samtools {
     tag "$name"
     memory '100 GB'
     cpus 16
-    publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam"
-    publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam.bai"
-    publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.flagstat"
-    publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.millionsmapped"
+    publishDir "${params.outdir}" , mode: 'copy',
+    saveAs: {filename ->
+             if ((filename.indexOf("sorted.bam") > 0) & !params.skipBAM)                                                                                                                             "mapped/bams/$filename"
+        else if ((filename.indexOf("sorted.bam.bai") > 0) & !params.skipBAM)                                                                                                                         "mapped/bams/$filename"
+        else if (filename.indexOf("sorted.bam.flagstat") > 0)         "qc/mapstats/$filename"
+        else if (filename.indexOf("sorted.bam.millionsmapped") > 0)   "qc/mapstats/$filename"
+        else if (filename.indexOf("sorted.cram") > 0)                 "mapped/crams/$filename"
+        else if (filename.indexOf("sorted.cram.crai") > 0)            "mapped/crams/$filename"
+    }
+    //publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam"
+    //publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam.bai"
+    //publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.flagstat"
+    //publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.millionsmapped"
+    //publishDir "${params.outdir}/mapped/crams", mode: 'copy', pattern: "${name}.sorted.cram"
+    //publishDir "${params.outdir}/mapped/crams", mode: 'copy', pattern: "${name}.sorted.cram.crai"
 
     input:
     set val(name), file(mapped_sam) from hisat2_sam
@@ -649,19 +654,21 @@ process samtools {
     set val(name), file("${name}.sorted.bam.bai") into sorted_bam_indices_ch
     set val(name), file("${name}.sorted.bam.flagstat") into bam_flagstat
     set val(name), file("${name}.sorted.bam.millionsmapped") into bam_milmapped_bedgraph
+    set val(name), file("${name}.sorted.cram") into cram_out
+    set val(name), file("${name}.sorted.cram.crai") into cram_index_out
 
     script:
-    prefix = mapped_sam.baseName
-// Note that the millionsmapped arugments below are only good for SE data. When PE is added, it will need to be changed to:
-    // -F 0x40 rootname.sorted.bam | cut -f1 | sort | uniq | wc -l  > rootname.bam.millionsmapped
     if (!params.singleEnd) {
     """
 
     samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
     samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
     samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
-    samtools view -@ 16 -F 0x40 ${name}.sorted.bam | cut -f1 | sort | uniq | wc -l > ${prefix}.sorted.bam.millionsmapped
+    samtools view -@ 16 -F 0x40 ${name}.sorted.bam | cut -f1 | sort | uniq | wc -l > ${name}.sorted.bam.millionsmapped
     samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
+    samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
+    samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
+    samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
     """
     } else {
     """
@@ -671,6 +678,9 @@ process samtools {
     samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
     samtools view -@ 16 -F 0x904 -c ${name}.sorted.bam > ${name}.sorted.bam.millionsmapped
     samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
+    samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
+    samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
+    samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
     """
     }
 }
@@ -690,6 +700,7 @@ process preseq {
     tag "$name"
     memory '20 GB'
     time '8h'
+    errorStrategy 'ignore'
     publishDir "${params.outdir}/qc/preseq/", mode: 'copy', pattern: "*.txt"
 
     input:
@@ -1085,7 +1096,7 @@ process FStitch {
 process tfit {
     tag "$name"
     memory '25 GB'
-    time '24h'
+    time '16h'
     cpus 16
     queue 'short'
     validExitStatus 0
@@ -1121,7 +1132,7 @@ process tfit {
 process prelimtfit {
     tag "$name"
     memory '25 GB'
-    time '24h'
+    time '16h'
     cpus 16
     queue 'short'
     validExitStatus 0
