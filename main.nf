@@ -1198,7 +1198,7 @@ process DAStk {
             process_atac \
                 --threads 16 \
                 --atac-peaks ${tfit} \
-                --motif-path $MOTIF
+                --motif-path ${MOTIF_PATH}
             """
         }
         else if (params.tfit && params.prelimtfit) {
@@ -1206,7 +1206,7 @@ process DAStk {
             process_atac \
                 --threads 16 \
                 --atac-peaks ${tfit} \
-                --motif-path $MOTIF
+                --motif-path ${MOTIF_PATH}
             """        
         }
        else {
@@ -1214,7 +1214,7 @@ process DAStk {
            process_atac \
                --threads 16 \
                --atac-peaks ${prelimtfit} \
-               --motif-path $MOTIF
+               --motif-path ${MOTIF_PATH}
            """ 
        }
 }
