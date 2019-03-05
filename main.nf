@@ -630,8 +630,8 @@ process samtools {
     saveAs: {filename ->
              if ((filename.indexOf("sorted.bam") > 0) & !params.skipBAM)                                                                                                                             "mapped/bams/$filename"
         else if ((filename.indexOf("sorted.bam.bai") > 0) & !params.skipBAM)                                                                                                                         "mapped/bams/$filename"
-        else if (filename.indexOf("sorted.bam.flagstat") > 0)         "qc/mapstats/$filename"
-        else if (filename.indexOf("sorted.bam.millionsmapped") > 0)   "qc/mapstats/$filename"
+        else if (filename.indexOf("flagstat") > 0)                    "qc/mapstats/$filename"
+        else if (filename.indexOf("millionsmapped") > 0)              "qc/mapstats/$filename"
         else if (filename.indexOf("sorted.cram") > 0)                 "mapped/crams/$filename"
         else if (filename.indexOf("sorted.cram.crai") > 0)            "mapped/crams/$filename"
     }
@@ -648,8 +648,8 @@ process samtools {
     output:
     set val(name), file("${name}.sorted.bam") into sorted_bam_ch
     set val(name), file("${name}.sorted.bam.bai") into sorted_bam_indices_ch
-    set val(name), file("${name}.sorted.bam.flagstat") into bam_flagstat
-    set val(name), file("${name}.sorted.bam.millionsmapped") into bam_milmapped_bedgraph
+    set val(name), file("${name}.flagstat") into bam_flagstat
+    set val(name), file("${name}.millionsmapped") into bam_milmapped_bedgraph
     set val(name), file("${name}.sorted.cram") into cram_out
     set val(name), file("${name}.sorted.cram.crai") into cram_index_out
 
@@ -659,8 +659,8 @@ process samtools {
 
     samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
     samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
-    samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
-    samtools view -@ 16 -F 0x40 ${name}.sorted.bam | cut -f1 | sort | uniq | wc -l > ${name}.sorted.bam.millionsmapped
+    samtools flagstat ${name}.sorted.bam > ${name}.flagstat
+    samtools view -@ 16 -F 0x40 ${name}.sorted.bam | cut -f1 | sort | uniq | wc -l > ${name}.millionsmapped
     samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
     samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
     samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
@@ -671,8 +671,8 @@ process samtools {
 
     samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
     samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
-    samtools flagstat ${name}.sorted.bam > ${name}.sorted.bam.flagstat
-    samtools view -@ 16 -F 0x904 -c ${name}.sorted.bam > ${name}.sorted.bam.millionsmapped
+    samtools flagstat ${name}.sorted.bam > ${name}.flagstat
+    samtools view -@ 16 -F 0x904 -c ${name}.sorted.bam > ${name}.millionsmapped
     samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
     samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
     samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
@@ -1127,10 +1127,10 @@ process tfit {
 
 process prelimtfit {
     tag "$name"
-    memory '25 GB'
-    time '16h'
+    memory '60 GB'
+    time '48h'
     cpus 16
-    queue 'short'
+    queue 'long'
     validExitStatus 0
     publishDir "${params.outdir}/prelimtfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
     publishDir "${params.outdir}/prelimtfit/logs", mode: 'copy', pattern: "*{tsv,log}"
@@ -1183,21 +1183,40 @@ process DAStk {
     
     when:
     params.DAStk
+    params.tfit || params.prelimtfit
     
     input:
     set val(prefix), file (tfit) from tfit_bed_out
+    set val(prefix), file (prelimtfit) from prelimtfit_bed_out
         
     output:
     file ("*.bed") into DAStk_bed_out
         
     script:
-    """
-    process_atac \
-        --prefix SRR \
-        --threads 16 \
-        --atac-peaks ${tfit} \
-        --motif-path ${MOTIF_PATH} \
-    """
+        if (params.tfit && !params.prelimtfit) {
+            """
+            process_atac \
+                --threads 16 \
+                --atac-peaks ${tfit} \
+                --motif-path $MOTIF
+            """
+        }
+        else if (params.tfit && params.prelimtfit) {
+            """
+            process_atac \
+                --threads 16 \
+                --atac-peaks ${tfit} \
+                --motif-path $MOTIF
+            """        
+        }
+       else {
+           """
+           process_atac \
+               --threads 16 \
+               --atac-peaks ${prelimtfit} \
+               --motif-path $MOTIF
+           """ 
+       }
 }
 
 
