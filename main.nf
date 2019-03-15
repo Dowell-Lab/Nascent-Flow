@@ -155,6 +155,10 @@ if ( params.MOTIF_PATH){
     MOTIF_PATH = file("${params.MOTIF_PATH}")
 }
 
+if ( params.genome_id){
+    GENOME_ID = file("${params.genome_id}")
+}
+
 // Has the run name been specified by the user?
 //  this has the bonus effect of catching both -name and --name
 custom_runName = params.name
@@ -1197,6 +1201,7 @@ process DAStk {
             """
             process_atac \
                 --threads 16 \
+                --genome ${GENOME_ID} \
                 --atac-peaks ${tfit} \
                 --motif-path ${MOTIF_PATH}
             """
@@ -1205,6 +1210,7 @@ process DAStk {
             """
             process_atac \
                 --threads 16 \
+                --genome ${GENOME_ID} \
                 --atac-peaks ${tfit} \
                 --motif-path ${MOTIF_PATH}
             """        
@@ -1213,6 +1219,7 @@ process DAStk {
            """
            process_atac \
                --threads 16 \
+               --genome ${GENOME_ID} \
                --atac-peaks ${prelimtfit} \
                --motif-path ${MOTIF_PATH}
            """ 
