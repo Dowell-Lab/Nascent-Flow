@@ -73,9 +73,10 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 
 | Arugment  | Usage                            | Description                                                          |
 |-----------|----------------------------------|----------------------------------------------------------------------|
-| -profile  | \<base,slurm\>                    | Configuration profile to use.                                        |
+| -profile  | \<base,slurm\>                    | Configuration profile to use.                                       |
 | --fastqs  | \</project/\*\_{R1,R2}\*.fastq\> | Directory pattern for fastq files.                                   |
 | --sras    | \</project/\*.sra\>              | Directory pattern for sra files.                                     |
+| --genome_id | \<'hg38'>                      | Genome ID to which the samples will be mapped (e.g. hg38, mm10, rn6).|
 | --workdir | \</project/tmp/\>                | Nextflow working directory where all intermediate files are saved.   |
 | --email   | \<EMAIL\>                        | Where to send workflow report email.                                 |
 
