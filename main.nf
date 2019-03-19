@@ -60,6 +60,7 @@ def helpMessage() {
 
     Required arguments:
          -profile                      Configuration profile to use. <base, slurm>
+         --genome_id                   Genome id (e.g. hg38, mm10, rn6, etc.).
          --fastqs                      Directory pattern for fastq files: /project/*{R1,R2}*.fastq (Required if --sras not specified)
          --sras                        Directory pattern for SRA files: /project/*.sras (Required if --fastqs not specified)
          --workdir                     Nextflow working directory where all intermediate files are saved.
@@ -87,6 +88,7 @@ def helpMessage() {
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
         --prelimtfit                   Run Tfit using the built-in prelim module. FStitch not required with this setting.
+        --dastk                        Run the first step in motif displacement analysis, "process_atac", using DAStk.
 
     """.stripIndent()
 }
@@ -139,24 +141,24 @@ if ( params.bbmap_adapters){
     bbmap_adapters = file("${params.bbmap_adapters}")
 }
 
-if ( params.FS_path ){
-    FS_path = file("${params.FS_path}")
+if ( params.fstitch_path ){
+    fstitch_path = file("${params.fstitch_path}")
 }
 
-if ( params.FS_train){
-    FS_train = file("${params.FS_train}")
+if ( params.fstitch_train){
+    fstitch_train = file("${params.fstitch_train}")
 }
 
-if ( params.Tfit_path){
-    Tfit_path = file("${params.Tfit_path}")
+if ( params.tfit_path){
+    tfit_path = file("${params.tfit_path}")
 }
 
-if ( params.MOTIF_PATH){
-    MOTIF_PATH = file("${params.MOTIF_PATH}")
+if ( params.motif_path){
+    motif_path = file("${params.motif_path}")
 }
 
 if ( params.genome_id){
-    GENOME_ID = file("${params.genome_id}")
+    genome_id = "${params.genome_id}"
 }
 
 // Has the run name been specified by the user?
@@ -237,11 +239,10 @@ summary['Output dir']       = params.outdir
 summary['FStitch']          = params.fstitch
 summary['Prelim Tfit']      = params.prelimtfit
 summary['Tfit']             = params.tfit
-summary['DAStk']            = params.DAStk
-if(params.fstitch)summary['FStitch dir']      = params.FS_path
-if(params.fstitch)summary['FStitch train']    = params.FS_train
-if(params.tfit)summary['Tfit dir']      = params.Tfit_path
-if(params.mpi)summary['Tfit Nodes']      = params.mpi
+summary['DAStk']            = params.dastk
+if(params.fstitch)summary['FStitch dir']      = params.fstitch_path
+if(params.fstitch)summary['FStitch train']    = params.fstitch_train
+if(params.tfit)summary['Tfit dir']      = params.tfit_path
 summary['Working dir']      = workflow.workDir
 summary['Container Engine'] = workflow.containerEngine
 if(workflow.containerEngine) summary['Container'] = workflow.container
@@ -429,7 +430,6 @@ process bbduk {
     file "*.txt" into trim_stats
 
     script:
-//    prefix = fastq.baseName
     if (!params.singleEnd && params.flip) {
         """
         echo ${name}
@@ -639,12 +639,6 @@ process samtools {
         else if (filename.indexOf("sorted.cram") > 0)                 "mapped/crams/$filename"
         else if (filename.indexOf("sorted.cram.crai") > 0)            "mapped/crams/$filename"
     }
-    //publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam"
-    //publishDir "${params.outdir}/mapped/bams", mode: 'copy', pattern: "${name}.sorted.bam.bai"
-    //publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.flagstat"
-    //publishDir "${params.outdir}/qc/mapstats", mode: 'copy', pattern: "${name}.sorted.bam.millionsmapped"
-    //publishDir "${params.outdir}/mapped/crams", mode: 'copy', pattern: "${name}.sorted.cram"
-    //publishDir "${params.outdir}/mapped/crams", mode: 'copy', pattern: "${name}.sorted.cram.crai"
 
     input:
     set val(name), file(mapped_sam) from hisat2_sam
@@ -1011,11 +1005,7 @@ process multiQC {
     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
     rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
 
-//TO DO : Need to build a new multiqc container for the newest version
-
     """
-    export PATH=~/.local/bin:$PATH
-
     multiqc . -f $rtitle $rfilename --config $multiqc_config
     """
 }
@@ -1054,19 +1044,19 @@ process FStitch {
     
     script:
     """
-    ${FS_path} train \
+    ${fstitch_path} train \
         -s + \
         -b ${bg} \
-        -t ${FS_train} \
+        -t ${fstitch_train} \
         -o ${name}.fstitch.hmminfo
         
-     ${FS_path} segment \
+     ${fstitch_path} segment \
         -s + \
         -b ${pos_bg} \
         -p ${name}.fstitch.hmminfo \
         -o ${name}.pos.fstitch_seg.bed
 
-     ${FS_path} segment \
+     ${fstitch_path} segment \
         -s - \
         -b ${neg_bg} \
         -p ${name}.fstitch.hmminfo \
@@ -1075,10 +1065,6 @@ process FStitch {
     cat ${name}.pos.fstitch_seg.bed \
         ${name}.neg.fstitch_seg.bed \
         | sortBed > ${name}.fstitch_seg.bed
-
-### Use segment data to define bidirectional regions of interest -- MUST BE pip3 installed
-
-    export PATH=~/.local/bin:$PATH
 
     bidir \
         -b ${name}.fstitch_seg.bed \
@@ -1111,7 +1097,7 @@ process tfit {
     set val(name), file(bg) from tfit_bg
         
     output:
-    file ("*tfit_bidirs.bed") into tfit_bed_out
+    set val(name), file ("${name}.tfit_bidirs.bed") into tfit_bed_out
     file ("*.tsv") into tfit_full_model_out
     file ("*.log") into tfit_logs_out
         
@@ -1119,7 +1105,7 @@ process tfit {
         """
         export OMP_NUM_THREADS=16
         
-        ${Tfit_path} model \
+        ${tfit_path} model \
             -bg ${bg} \
             -s ${bidirs} \
             -N $name \
@@ -1156,14 +1142,14 @@ process prelimtfit {
         """
         export OMP_NUM_THREADS=16
         
-        ${Tfit_path} prelim \
+        ${tfit_path} prelim \
             -bg ${bg} \
             -N $name \
             -l \
             -o ${name}.tfit_prelim.bed \
             --threads 16
         
-        ${Tfit_path} model \
+        ${tfit_path} model \
             -bg ${bg} \
             -s ${name}.tfit_prelim.bed \
             -N $name \
@@ -1178,52 +1164,33 @@ process prelimtfit {
  */
 
 process DAStk {
-    tag "$prefix"
+    tag "$name"
     memory '20 GB'
     time '2h'
     cpus 16
     validExitStatus 0
-    publishDir "${params.outdir}/DAStk", mode: 'copy', pattern: "*.bed"
+    publishDir "${params.outdir}/dastk", mode: 'copy', pattern: "*.txt"
     
     when:
-    params.DAStk
-    params.tfit || params.prelimtfit
+    params.dastk && params.tfit
     
     input:
-    set val(prefix), file (tfit) from tfit_bed_out
-    set val(prefix), file (prelimtfit) from prelimtfit_bed_out
-        
+    set val(name), file (bed) from tfit_bed_out
+    val(motif_path) from motif_path
+    val(genome_id) from genome_id
+       
     output:
-    file ("*.bed") into DAStk_bed_out
+    file ("*.txt") into dastk_bed_out
         
     script:
-        if (params.tfit && !params.prelimtfit) {
-            """
-            process_atac \
-                --threads 16 \
-                --genome ${GENOME_ID} \
-                --atac-peaks ${tfit} \
-                --motif-path ${MOTIF_PATH}
-            """
-        }
-        else if (params.tfit && params.prelimtfit) {
-            """
-            process_atac \
-                --threads 16 \
-                --genome ${GENOME_ID} \
-                --atac-peaks ${tfit} \
-                --motif-path ${MOTIF_PATH}
-            """        
-        }
-       else {
-           """
-           process_atac \
-               --threads 16 \
-               --genome ${GENOME_ID} \
-               --atac-peaks ${prelimtfit} \
-               --motif-path ${MOTIF_PATH}
-           """ 
-       }
+        """
+        process_atac \
+            --threads 16 \
+            --genome ${genome_id} \
+            --atac-peaks ${bed} \
+            --motif-path ${motif_path} \
+            --output .
+        """
 }
 
 
