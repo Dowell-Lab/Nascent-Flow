@@ -585,6 +585,7 @@ process hisat2 {
     cpus 32
     memory '100 GB'
     time '2h'
+    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*.txt"
 
     input:
     file(indices) from hisat2_indices
@@ -593,6 +594,7 @@ process hisat2 {
 
     output:
     set val(name), file("*.sam") into hisat2_sam
+    file("*.txt") into hisat2_mapstats    
 
     script:
     //prefix = trimmed_reads.baseName
@@ -605,8 +607,10 @@ process hisat2 {
                 --no-spliced-alignment \
                 -x ${indices_path} \
                 -1 ${name}_R1.trim.fastq \
-                -2 ${name}_R2.trim.fastq
-                > ${name}.sam
+                -2 ${name}_R2.trim.fastq \
+                --new-summary \
+                > ${name}.sam \
+                2> ${name}.hisat2_mapstats.txt                
         """
     } else {
         """
@@ -617,7 +621,9 @@ process hisat2 {
                 --no-spliced-alignment \
                 -x ${indices_path}\
                 -U ${trimmed_reads} \
-                > ${name}.sam
+                --new-summary \                
+                > ${name}.sam \
+                2> ${name}.hisat2_mapstats.txt                
         """
     }
 }
@@ -996,6 +1002,7 @@ process multiQC {
     file ('qc/rseqc/*') from rseqc_results.collect()
     file ('qc/preseq/*') from preseq_results.collect()
     file ('software_versions/*') from software_versions_yaml
+    file ('qc/hisat2_mapstats*') from hisat2_mapstats.collect()
 
     output:
     file "*multiqc_report.html" into multiqc_report
