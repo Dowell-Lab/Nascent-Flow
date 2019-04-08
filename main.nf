@@ -621,7 +621,7 @@ process hisat2 {
                 --no-spliced-alignment \
                 -x ${indices_path}\
                 -U ${trimmed_reads} \
-                --new-summary \                
+                --new-summary \
                 > ${name}.sam \
                 2> ${name}.hisat2_mapstats.txt                
         """
@@ -1089,7 +1089,7 @@ process FStitch {
 process tfit {
     tag "$name"
     memory '25 GB'
-    time '16h'
+    time '20h'
     cpus 16
     queue 'short'
     validExitStatus 0
