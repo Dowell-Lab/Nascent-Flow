@@ -15,7 +15,6 @@ regexes = {
     'BBduk': ['v_bbduk.txt', r"BBDuk Trimming version(\S+)"],
     'Hisat2': ['v_hisat2.txt', r"hisat2-align-s version (\S+)"],
     'preseq': ['v_preseq.txt', r"Preseq version(\S+)"],
-    'seqkit': ['v_seqkit.txt', r"seqkit version(\S+)"],
     'FStitch': ['v_fstitch.txt', r"FStitch version(\S+)"],
     'Tfit': ['v_tfit.txt', r"Tfit version(\S+)"],
 }

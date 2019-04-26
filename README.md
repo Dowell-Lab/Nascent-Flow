@@ -27,7 +27,7 @@ Secondly, edit the appropriate config file, e.g. `conf/slurm_grch38.config`, to 
 
 ```
 
-    $ nextflow run main.nf -profile slurm_grch38 --workdir '</nextflow/work/temp/>' --outdir '</my/project/>' --email <john.doe@themailplace.com> --sras '</dir/to/sras/*>'
+    $ nextflow run main.nf -profile slurm_grch38 --workdir '</nextflow/work/temp/>' --genome_id 'hg38' --outdir '</my/project/>' --email <john.doe@themailplace.com> --sras '</dir/to/sras/*>'
     
 ```
 
@@ -73,8 +73,8 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 
 | Arugment  | Usage                            | Description                                                          |
 |-----------|----------------------------------|----------------------------------------------------------------------|
-| -profile  | \<base,slurm\>                    | Configuration profile to use.                                       |
-| --fastqs  | \</project/\*\_{R1,R2}\*.fastq\> | Directory pattern for fastq files.                                   |
+| -profile  | \<base,slurm\>                   | Configuration profile to use.                                        | 
+| --fastqs  | \</project/\*\_{R1,R2}\*.fastq.gz\> | Directory pattern for fastq files (gzipped).                      |
 | --sras    | \</project/\*.sra\>              | Directory pattern for sra files.                                     |
 | --genome_id | \<'hg38'>                      | Genome ID to which the samples will be mapped (e.g. hg38, mm10, rn6).|
 | --workdir | \</project/tmp/\>                | Nextflow working directory where all intermediate files are saved.   |
@@ -109,6 +109,10 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 |-----------------|-------------|---------------------------------------------------------|
 | --skipMultiQC   |             | Skip running MultiQC.                                   |
 | --skipRSeQC     |             | Skip running RSeQC.                                     |
+| --skippreseq    |             | Skip running preseq.                                    |
+| --skipFastQC    |             | Skip running FastQC                                     |
+| --skippileup    |             | Skip running pileup.                                    |
+| --skipAllQC     |             | Skip running all QC (does not include mapstats).        |
 
 **Analysis Options**
 

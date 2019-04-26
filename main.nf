@@ -17,7 +17,6 @@ Pipeline steps:
     1. Pre-processing sra/fastq
         1a. SRA tools -- fasterq-dump sra to generate fastq file
         1b. FastQC (pre-trim) -- perform pre-trim FastQC on fastq files
-        1c. Gzip fastq -- compress fastq files for storage
 
     2. Trimming
         2a. BBDuk -- trim fastq files for quality and adapters
@@ -43,6 +42,10 @@ Pipeline steps:
     9. MultiQC : generate QC report for pipeline
     
     10. FStitch : Segment data into active and inactive transcriptional regions and annotate bidirectionals
+    
+    11. Tfit/PrelimTfit : Annotate and model sites of RNAPII activity (bidirectional signal)
+    
+    12. DAStk : Run motif displacement analysis
 
 */
 
@@ -75,14 +78,18 @@ def helpMessage() {
 
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
-        --savefq                       Compresses and saves raw fastq reads.
-        --saveTrim                     Compresses and saves trimmed fastq reads.
+        --savefq                       Saves compressed raw fastq reads.
+        --saveTrim                     Saves compressed trimmed fastq reads.
         --skipBAM                      Skip saving BAM files. Only CRAM files will be saved with this option.
-        --saveAll                      Compresses and saves all fastq reads.
+        --saveAll                      Saves all compressed fastq reads.
 
     QC Options:
         --skipMultiQC                  Skip running MultiQC.
+        --skipFastQC                   Skip running FastQC.
         --skipRSeQC                    Skip running RSeQC.
+        --skippreseq                   Skip running preseq.
+        --skippileup                   Skip running pileup.sh.
+        --skipAllQC                    Skip running all QC.
         
     Analysis Options:
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
@@ -230,8 +237,12 @@ summary['Save BAM']         = params.skipBAM ? 'NO' : 'YES'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
+summary['Run FastQC']       = params.skipFastQC ? 'NO' : 'YES'
+summary['Run preseq']       = params.skippreseq ? 'NO' : 'YES'
+summary['Run pileup']       = params.skippileup ? 'NO' : 'YES'
 summary['Run RSeQC']        = params.skipRSeQC ? 'NO' : 'YES'
 summary['Run MultiQC']      = params.skipMultiQC ? 'NO' : 'YES'
+summary['Skip All QC']      = params.skipAllQC ? 'NO' : 'YES'
 summary['Max Memory']       = params.max_memory
 summary['Max CPUs']         = params.max_cpus
 summary['Max Time']         = params.max_time
@@ -292,7 +303,6 @@ process get_software_versions {
     samtools --version > v_samtools.txt
     fastq-dump --version > v_fastq-dump.txt
     preseq > v_preseq.txt
-    seqkit version > v_seqkit.txt
     bedtools --version > v_bedtools.txt
     igvtools version > v_igv-tools.txt
     echo $params.FS_path train --version > v_fstitch.txt
@@ -316,12 +326,15 @@ process sra_dump {
     else {
         cpus 1
     }
+    if (params.savefq || params.saveAllfq) {
+        publishDir "${params.outdir}/fastq", mode: 'copy'
+    }
     
     input:
     set val(prefix), file(reads) from read_files_sra
 
     output:
-    set val(prefix), file("*.fastq") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_gzip_sra
+    set val(prefix), file("*.fastq.gz") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_gzip_sra
    
 
     script:
@@ -330,7 +343,7 @@ process sra_dump {
         """
         echo ${prefix}
 
-        fastq-dump ${reads}
+        fastq-dump ${reads} --gzip
         """
     } else if (!params.singleEnd) {
          """
@@ -338,6 +351,7 @@ process sra_dump {
 
         parallel-fastq-dump \
             --threads 8 \
+            --gzip \
             --split-3 \
             --sra-id ${reads}
         """
@@ -345,7 +359,7 @@ process sra_dump {
         """
         echo ${prefix}
 
-        fastq-dump --split-3 ${reads}
+        fastq-dump --split-3 ${reads} --gzip
         """
     } else {
         """
@@ -353,6 +367,7 @@ process sra_dump {
 
         parallel-fastq-dump \
             --threads 8 \
+            --gzip \
             --sra-id ${reads}
         """
     }
@@ -368,6 +383,9 @@ process fastQC {
     memory '8 GB'
     publishDir "${params.outdir}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
+    
+    when:
+    !params.skipFastQC && !params.skipAllQC
 
     input:
     set val(prefix), file(reads) from fastq_reads_qc.mix(fastq_reads_qc_sra)
@@ -380,35 +398,8 @@ process fastQC {
     echo ${prefix}
 
     fastqc $reads
-		extract_fastqc_stats.sh --srr=${prefix} > ${prefix}_stats_fastqc.txt
     """
 }
-
-
-/*
- *STEP 1c - Compress fastq files for storage
- */
-
-process gzip_fastq {
-    tag "$name"
-    memory '4 GB'
-    publishDir "${params.outdir}/fastq", mode: 'copy'
-
-    when:
-    params.savefq || params.saveAllfq
-
-    input:
-    set val(name), file(fastq_reads) from fastq_reads_gzip.mix(fastq_reads_gzip_sra)
-
-    output:
-    set val(name), file("*.gz") into compressed_fastq
-
-    script:
-    """
-    gzip -c ${name}.fastq > ${name}.fastq.gz
-    """
- }
-
 
 /*
  * STEP 2a - Trimming
@@ -421,12 +412,15 @@ process bbduk {
     time '2h'
     memory '20 GB'
     publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.txt"
+    if (params.saveTrim || params.saveAllfq) {
+        publishDir "${params.outdir}/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
+    }    
 
     input:
     set val(name), file(reads) from fastq_reads_trim.mix(fastq_reads_trim_sra)
 
     output:
-    set val(name), file ("*.trim.fastq") into trimmed_reads_fastqc, trimmed_reads_hisat2, trimmed_reads_gzip
+    set val(name), file ("*.trim.fastq.gz") into trimmed_reads_fastqc, trimmed_reads_hisat2, trimmed_reads_gzip
     file "*.txt" into trim_stats
 
     script:
@@ -434,53 +428,51 @@ process bbduk {
         """
         echo ${name}
 
-        seqkit seq -j 16 -r -p \
-                  ${name}_R1.flip.fastq \
-                  -o ${name}.flip.fastq
-                  
-        seqkit seq -j 16 -r -p \
-                 ${name}_R2.flip.fastq \
-                 -o ${name}.flip.fastq
-
-        
+        reformat.sh -Xmx20g \
+                t=16 \
+                in=${name}_R1.fastq.gz \
+                in2=${name}_R2.fastq.gz \
+                out=${name}_R1.flip.fastq.gz \
+                out2=${name}_R2.flip.fastq.gz \
+                rcomp=t        
 
         bbduk.sh -Xmx20g \
                   t=16 \
-                  in=${name}_R1.flip.fastq \
-                  in2=${name}_R2.flip.fastq \
-                  out=${name}_R1.flip.trim.fastq \
-                  out2=${name}_R2.flip.trim.fastq \
+                  in=${name}_R1.flip.fastq.gz \
+                  in2=${name}_R2.flip.fastq.gz \
+                  out=${name}_R1.flip.trim.fastq.gz \
+                  out2=${name}_R2.flip.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
-                  refstats=${name}.refstats.txt \
-                  ehist=${name}.ehist.txt
+                  refstats=${name}.refstats.txt
         """
     } else if (params.flip) {
         """
         echo ${name}
 
 
-        seqkit seq -j 16 -r -p \
-                  ${name}.fastq \
-                  -o ${name}.flip.fastq
+        reformat.sh -Xmx20g \
+                t=16 \
+                in=${name}.fastq.gz \
+                out=${name}.flip.fastq.gz \
+                rcomp=t
 
         
         bbduk.sh -Xmx20g \
                   t=16 \
-                  in=${name}.flip.fastq \
-                  out=${name}.flip.trim.fastq \
+                  in=${name}.flip.fastq.gz \
+                  out=${name}.flip.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
-                  refstats=${name}.refstats.txt \
-                  ehist=${name}.ehist.txt
+                  refstats=${name}.refstats.txt
         """
     }
         else if (!params.singleEnd) {
@@ -489,18 +481,17 @@ process bbduk {
 
         bbduk.sh -Xmx20g \
                   t=16 \
-                  in=${name}_R1.fastq \
-                  in2=${name}_R2.fastq \
-                  out=${name}_R1.trim.fastq \
-                  out2=${name}_R2.trim.fastq \
+                  in=${name}_R1.fastq.gz \
+                  in2=${name}_R2.fastq.gz \
+                  out=${name}_R1.trim.fastq.gz \
+                  out2=${name}_R2.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
-                  refstats=${name}.refstats.txt \
-                  ehist=${name}.ehist.txt
+                  refstats=${name}.refstats.txt
         """
     } else {
         """
@@ -508,16 +499,15 @@ process bbduk {
         
         bbduk.sh -Xmx20g \
                   t=16 \
-                  in=${name}.fastq \
-                  out=${name}.trim.fastq \
+                  in=${name}.fastq.gz \
+                  out=${name}.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
-                  refstats=${name}.refstats.txt \
-                  ehist=${name}.ehist.txt
+                  refstats=${name}.refstats.txt
         """
     }
 }
@@ -527,12 +517,15 @@ process bbduk {
  * STEP 2b - Trimmed FastQC
  */
 
-process fastqc_trimmed {
+process fastQC_trimmed {
     validExitStatus 0,1
     tag "$prefix"
     memory '4 GB'
     publishDir "${params.outdir}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
+    
+    when:
+    !params.skipFastQC && !params.skipAllQC    
 
     input:
     set val(prefix), file(trimmed_reads) from trimmed_reads_fastqc
@@ -545,35 +538,9 @@ process fastqc_trimmed {
     """
     echo ${prefix}
 
-    fastqc $trimmed_reads
-		extract_fastqc_stats.sh --srr=${prefix} > ${prefix}_stats_fastqc.txt
+    fastqc ${trimmed_reads}
     """
 }
-
-/*
- *STEP 2c - Compress trimmed fastq files for storage
- */
-
-process gzip_trimmed {
-    tag "$prefix"
-    memory '4 GB'
-    publishDir "${params.outdir}/trimmed", mode: 'copy'
-
-    when:
-    params.saveTrim || params.saveAllfq
-
-    input:
-    file(trimmed_reads) from trimmed_reads_gzip
-
-    output:
-    set val(prefix), file("*.gz") into trimmed_gzip
-
-    script:
-    """
-    gzip -c $trimmed_reads > ${prefix}.fastq.gz
-    """
- }
-
 
 /*
  * STEP 3 - Map reads to reference genome
@@ -606,8 +573,8 @@ process hisat2 {
                 --very-sensitive \
                 --no-spliced-alignment \
                 -x ${indices_path} \
-                -1 ${name}_R1.trim.fastq \
-                -2 ${name}_R2.trim.fastq \
+                -1 ${name}_R1.trim.fastq.gz \
+                -2 ${name}_R2.trim.fastq.gz \
                 --new-summary \
                 > ${name}.sam \
                 2> ${name}.hisat2_mapstats.txt                
@@ -702,6 +669,9 @@ process preseq {
     time '8h'
     errorStrategy 'ignore'
     publishDir "${params.outdir}/qc/preseq/", mode: 'copy', pattern: "*.txt"
+    
+    when:
+    !params.skippreseq && !params.skipAllQC    
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_preseq
@@ -746,7 +716,7 @@ process rseqc {
         }
     
     when:
-    !params.skipRSeQC
+    !params.skipRSeQC && !params.skipAllQC
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_rseqc
@@ -783,6 +753,9 @@ process pileup {
     tag "$name"
     memory '50 GB'
     publishDir "${params.outdir}/qc/pileup", mode: 'copy', pattern: "*.txt"
+    
+    when:
+    !params.skippileup && !params.skipAllQC    
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_pileup
@@ -991,7 +964,7 @@ process multiQC {
     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "*_data"
 
     when:
-    !params.skipMultiQC
+    !params.skipMultiQC && !params.skipAllQC
 
     input:
     file multiqc_config
@@ -1044,7 +1017,7 @@ process FStitch {
     output:
     file ("*.hmminfo") into fs_train_out
     file ("*.fstitch_seg.bed") into fs_seg_out
-    set val(name), file ("${name}.fstitch_bidir.bed") into fs_bidir_out
+    set val(name), file ("*.fstitch_bidir.bed") into fs_bidir_out
     file ("*fstitch_bidir.{short,long}.bed") into fs_bidir_short_long_out
     file ("*.html") into fs_bidir_plot_out
     file ("*.txt") into fs_bidir_stats_out
