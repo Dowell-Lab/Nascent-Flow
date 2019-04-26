@@ -184,13 +184,10 @@ if (params.fastqs) {
     if (params.singleEnd) {
         fastq_reads_qc = Channel
                             .fromPath(params.fastqs)
-                            .map { file -> tuple(file.baseName, file) }
+                            .map { file -> tuple(file.simpleName, file) }
         fastq_reads_trim = Channel
                             .fromPath(params.fastqs)
-                            .map { file -> tuple(file.baseName, file) }
-        fastq_reads_gzip = Channel
-                            .fromPath(params.fastqs)
-                            .map { file -> tuple(file.baseName, file) }
+                            .map { file -> tuple(file.simpleName, file) }
     } else {
         Channel
             .fromFilePairs( params.fastqs, size: params.singleEnd ? 1 : 2 )
@@ -420,7 +417,7 @@ process bbduk {
     set val(name), file(reads) from fastq_reads_trim.mix(fastq_reads_trim_sra)
 
     output:
-    set val(name), file ("*.trim.fastq.gz") into trimmed_reads_fastqc, trimmed_reads_hisat2, trimmed_reads_gzip
+    set val(name), file ("*.trim.fastq.gz") into trimmed_reads_fastqc, trimmed_reads_hisat2
     file "*.txt" into trim_stats
 
     script:
