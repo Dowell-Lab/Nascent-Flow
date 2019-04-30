@@ -549,7 +549,7 @@ process hisat2 {
     cpus 32
     memory '100 GB'
     time '2h'
-    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*mapstats"
 
     input:
     file(indices) from hisat2_indices
@@ -558,7 +558,7 @@ process hisat2 {
 
     output:
     set val(name), file("*.sam") into hisat2_sam
-    file("*.txt") into hisat2_mapstats    
+    file("*.mapstats") into hisat2_mapstats    
 
     script:
     //prefix = trimmed_reads.baseName
@@ -574,7 +574,7 @@ process hisat2 {
                 -2 ${name}_R2.trim.fastq.gz \
                 --new-summary \
                 > ${name}.sam \
-                2> ${name}.hisat2_mapstats.txt                
+                2> ${name}.hisat2_mapstats                
         """
     } else {
         """
@@ -587,7 +587,7 @@ process hisat2 {
                 -U ${trimmed_reads} \
                 --new-summary \
                 > ${name}.sam \
-                2> ${name}.hisat2_mapstats.txt                
+                2> ${name}.hisat2_mapstats                
         """
     }
 }
