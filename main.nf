@@ -302,8 +302,8 @@ process get_software_versions {
     preseq > v_preseq.txt
     bedtools --version > v_bedtools.txt
     igvtools version > v_igv-tools.txt
-    echo $params.FS_path train --version > v_fstitch.txt
-    echo $params.Tfit_path model --version > v_tfit.txt
+    echo $fstitch_path train --version > v_fstitch.txt
+    echo $tfit_path model --version > v_tfit.txt
 
     for X in `ls *.txt`; do
         cat \$X >> all_versions.txt;
