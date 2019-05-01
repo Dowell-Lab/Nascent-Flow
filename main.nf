@@ -558,7 +558,7 @@ process hisat2 {
 
     output:
     set val(name), file("*.sam") into hisat2_sam
-    file("*.mapstats") into hisat2_mapstats    
+    file("*mapstats") into hisat2_mapstats    
 
     script:
     //prefix = trimmed_reads.baseName
