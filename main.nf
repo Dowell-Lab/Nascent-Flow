@@ -92,6 +92,7 @@ def helpMessage() {
         --skipAllQC                    Skip running all QC.
         
     Analysis Options:
+        --counts                       Run BEDTools mutlicov for each sample to obtain gene counts over the RefSeq annotation.
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
         --prelimtfit                   Run Tfit using the built-in prelim module. FStitch not required with this setting.
@@ -234,6 +235,7 @@ summary['Save BAM']         = params.skipBAM ? 'NO' : 'YES'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
+summary['Run Multicov']     = params.counts ? 'YES' : 'NO'
 summary['Run FastQC']       = params.skipFastQC ? 'NO' : 'YES'
 summary['Run preseq']       = params.skippreseq ? 'NO' : 'YES'
 summary['Run pileup']       = params.skippileup ? 'NO' : 'YES'
@@ -302,8 +304,8 @@ process get_software_versions {
     preseq > v_preseq.txt
     bedtools --version > v_bedtools.txt
     igvtools version > v_igv-tools.txt
-    echo $fstitch_path train --version > v_fstitch.txt
-    echo $tfit_path model --version > v_tfit.txt
+    $fstitch_path train --version > v_fstitch.txt
+    $tfit_path model --version > v_tfit.txt
 
     for X in `ls *.txt`; do
         cat \$X >> all_versions.txt;
@@ -650,10 +652,10 @@ process samtools {
 }
 
 sorted_bam_ch
-   .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup}
+   .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup; sorted_bams_for_counts}
 
 sorted_bam_indices_ch
-    .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc}
+    .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc; sorted_bam_indices_for_counts}
 
 /*
  *STEP 5a - Plot the estimated complexity of a sample, and estimate future yields
@@ -1167,6 +1169,36 @@ process DAStk {
             --atac-peaks ${bed} \
             --motif-path ${motif_path} \
             --output .
+        """
+}
+
+/*
+ * STEP 13 - Counts -- BEDTools multicov
+ */
+
+process multicov {
+    tag "$name"
+    memory '10 GB'
+    time '2h'
+    validExitStatus 0
+    publishDir "${params.outdir}/counts", mode: 'copy', pattern: "*.bed"
+    
+    when:
+    params.counts
+    
+    input:
+    set val(name), file (count_bam) from sorted_bams_for_counts
+    set val(name), file (bam_indices) from sorted_bam_indices_for_counts
+       
+    output:
+    file ("*.bed") into counts_bed_out
+        
+    script:
+        """
+        bedtools multicov \
+            -bams ${count_bam} \
+            -bed ${genome_refseq} \
+            > ${name}_counts.bed
         """
 }
 
