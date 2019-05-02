@@ -71,14 +71,14 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 
 **Required Arguments**
 
-| Arugment       | Usage                            | Description                                                          |
-|----------------|----------------------------------|----------------------------------------------------------------------|
-| -profile       | \<base,slurm\>                   | Configuration profile to use.                                        | 
-| --fastqs       | \</project/\*\_{R1,R2}\*.fastq.gz\> | Directory pattern for fastq files (gzipped).                      |
-| --sras         | \</project/\*.sra\>              | Directory pattern for sra files.                                     |
-| --genomeid     | \<'hg38'>                        | Genome ID to which the samples will be mapped (e.g. hg38, mm10, rn6).|
-| --workdir      | \</project/tmp/\>                | Nextflow working directory where all intermediate files are saved.   |
-| --email        | \<EMAIL\>                        | Where to send workflow report email.                                 |
+| Arugments       | Usage                            | Description                                                          |
+|-----------------|----------------------------------|----------------------------------------------------------------------|
+| -profile        | \<base,slurm\>                   | Configuration profile to use.                                        | 
+| --fastqs        | \</project/\*\_{R1,R2}\*.fastq.gz\> | Directory pattern for fastq files (gzipped).                      |
+| --sras          | \</project/\*.sra\>              | Directory pattern for sra files.                                     |
+| --genomeid      | \<'hg38'>                        | Genome ID to which the samples will be mapped (e.g. hg38, mm10, rn6).|
+| --workdir       | \</project/tmp/\>                | Nextflow working directory where all intermediate files are saved.   |
+| --email         | \<EMAIL\>                        | Where to send workflow report email.                                 |
 
 **Save Options**
 
