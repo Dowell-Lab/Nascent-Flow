@@ -63,7 +63,7 @@ def helpMessage() {
 
     Required arguments:
          -profile                      Configuration profile to use. <base, slurm>
-         --genome_id                   Genome id (e.g. hg38, mm10, rn6, etc.).
+         --genomeid                    Genome ID (e.g. hg38, mm10, rn6, etc.).
          --fastqs                      Directory pattern for fastq files: /project/*{R1,R2}*.fastq (Required if --sras not specified)
          --sras                        Directory pattern for SRA files: /project/*.sras (Required if --fastqs not specified)
          --workdir                     Nextflow working directory where all intermediate files are saved.
@@ -165,8 +165,8 @@ if ( params.motif_path){
     motif_path = file("${params.motif_path}")
 }
 
-if ( params.genome_id){
-    genome_id = "${params.genome_id}"
+if ( params.genomeid){
+    genome_id = "${params.genomeid}"
 }
 
 // Has the run name been specified by the user?
