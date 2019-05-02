@@ -118,9 +118,11 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 
 | Arguments       | Usage       | Description                                                                         |
 |-----------------|-------------|-------------------------------------------------------------------------------------|
+| --counts        |             | Run BEDTools mutlicov for each sample to obtain gene counts over the RefSeq annotation. |
 | --fstitch       |             | Runs FStitch to segment nascent data into active/inactive regions of transcription. |
 | --tfit          |             | Runs Tfit to model RNAPII activity. Must be run in conjunction with FStitch (--fstitch).|
 | --prelimtfit    |             | Runs Tfit to model RNAPII activity. Does not require FStitch; uses Tfit prelim module.|
+| --dastk         |             | Run the first step in motif displacement analysis, "process_atac", using DAStk. Requires Tfit (--tfit) argumemt. |
 
 ### Credits
 
