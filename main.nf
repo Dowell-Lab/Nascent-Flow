@@ -551,7 +551,7 @@ process hisat2 {
     cpus 32
     memory '100 GB'
     time '2h'
-    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*mapstats"
+    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*.txt"
 
     input:
     file(indices) from hisat2_indices
@@ -560,7 +560,7 @@ process hisat2 {
 
     output:
     set val(name), file("*.sam") into hisat2_sam
-    file("*mapstats") into hisat2_mapstats    
+    file("*.txt") into hisat2_mapstats    
 
     script:
     //prefix = trimmed_reads.baseName
@@ -575,8 +575,8 @@ process hisat2 {
                 -1 ${name}_R1.trim.fastq.gz \
                 -2 ${name}_R2.trim.fastq.gz \
                 --new-summary \
-                > ${name}.sam \
-                2> ${name}.hisat2_mapstats                
+                --summary-file ${name}.hisat2_summary.txt \
+                > ${name}.sam
         """
     } else {
         """
@@ -588,8 +588,8 @@ process hisat2 {
                 -x ${indices_path}\
                 -U ${trimmed_reads} \
                 --new-summary \
-                > ${name}.sam \
-                2> ${name}.hisat2_mapstats                
+                --summary-file ${name}.hisat2_summary.txt \
+                > ${name}.sam
         """
     }
 }
@@ -974,7 +974,7 @@ process multiQC {
     file ('qc/rseqc/*') from rseqc_results.collect()
     file ('qc/preseq/*') from preseq_results.collect()
     file ('software_versions/*') from software_versions_yaml
-    file ('qc/hisat2_mapstats*') from hisat2_mapstats.collect()
+    file ('qc/hisat2_mapstats/*') from hisat2_mapstats.collect()
 
     output:
     file "*multiqc_report.html" into multiqc_report
@@ -1096,7 +1096,7 @@ process tfit {
 
 process prelimtfit {
     tag "$name"
-    memory '60 GB'
+    memory '100 GB'
     time '48h'
     cpus 16
     queue 'long'
@@ -1224,7 +1224,7 @@ process merge_multicov {
         
     script:
         """
-        ${params.merge_counts} \
+        python3 ${params.merge_counts} \
             -b counts/*.bed \
             -o merged_counts.bed \
         """
