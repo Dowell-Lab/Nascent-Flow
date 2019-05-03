@@ -120,8 +120,8 @@ params.plaintext_email = false
 params.bbmap_adapters = "$baseDir/bin/adapters.fa"
 params.bedGraphToBigWig = "$baseDir/bin/bedGraphToBigWig"
 params.rcc = "$baseDir/bin/rcc.py"
+params.merge_counts = "$baseDir/bin/merge_counts.py"
 params.workdir = "./nextflowTemp"
-
 multiqc_config = file(params.multiqc_config)
 output_docs = file("$baseDir/docs/output.md")
 
@@ -241,15 +241,15 @@ summary['Run preseq']       = params.skippreseq ? 'NO' : 'YES'
 summary['Run pileup']       = params.skippileup ? 'NO' : 'YES'
 summary['Run RSeQC']        = params.skipRSeQC ? 'NO' : 'YES'
 summary['Run MultiQC']      = params.skipMultiQC ? 'NO' : 'YES'
-summary['Skip All QC']      = params.skipAllQC ? 'NO' : 'YES'
+summary['Skip All QC']      = params.skipAllQC ? 'YES' : 'NO'
 summary['Max Memory']       = params.max_memory
 summary['Max CPUs']         = params.max_cpus
 summary['Max Time']         = params.max_time
 summary['Output dir']       = params.outdir
-summary['FStitch']          = params.fstitch
-summary['Prelim Tfit']      = params.prelimtfit
-summary['Tfit']             = params.tfit
-summary['DAStk']            = params.dastk
+summary['FStitch']          = params.fstitch ? 'YES' : 'NO'
+summary['Prelim Tfit']      = params.prelimtfit ? 'YES' : 'NO'
+summary['Tfit']             = params.tfit ? 'YES' : 'NO'
+summary['DAStk']            = params.dastk ? 'YES' : 'NO'
 if(params.fstitch)summary['FStitch dir']      = params.fstitch_path
 if(params.fstitch)summary['FStitch train']    = params.fstitch_train
 if(params.tfit)summary['Tfit dir']      = params.tfit_path
@@ -1199,6 +1199,34 @@ process multicov {
             -bams ${count_bam} \
             -bed ${genome_refseq} \
             > ${name}_counts.bed
+        """
+}
+
+/*
+ * STEP 14 - Merge Counts
+ */
+
+process merge_multicov {
+    tag "$name"
+    memory '10 GB'
+    time '1h'
+    validExitStatus 0
+    publishDir "${params.outdir}/counts", mode: 'copy', pattern: "merged_counts.bed"
+    
+    when:
+    params.counts
+    
+    input:
+    file (multicov:'counts/*') from counts_bed_out.collect()
+       
+    output:
+    file ("merged_counts.bed") into merged_counts_bed_out
+        
+    script:
+        """
+        ${params.merge_counts} \
+            -b counts/*.bed \
+            -o merged_counts.bed \
         """
 }
 
