@@ -549,7 +549,7 @@ process hisat2 {
     tag "$name"
     validExitStatus 0
     cpus 32
-    memory '100 GB'
+    memory '40 GB'
     time '2h'
     publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*.txt"
 
@@ -1096,7 +1096,7 @@ process tfit {
 
 process prelimtfit {
     tag "$name"
-    memory '100 GB'
+    memory '80 GB'
     time '48h'
     cpus 16
     queue 'long'
