@@ -1225,7 +1225,7 @@ process merge_multicov {
     script:
         """
         python3 ${params.merge_counts} \
-            -b counts/*.bed \
+            -b './counts/' \
             -o merged_counts.bed \
         """
 }
