@@ -32,6 +32,8 @@ if __name__ == "__main__":
 
 def reader(f):
     sample = str(os.path.splitext(os.path.basename(f))[0])
+    if sample.endswith('_counts'):
+        sample = str(sample[:-7])
     return pd.read_csv(f, sep="\t", usecols=[0,1,2,3,12], \
                          names=['chr', 'start', 'stop', 'id', sample])
 
