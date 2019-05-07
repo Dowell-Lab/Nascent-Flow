@@ -1096,8 +1096,8 @@ process tfit {
 
 process prelimtfit {
     tag "$name"
-    memory '80 GB'
-    time '48h'
+    memory '100 GB'
+    time '72h'
     cpus 16
     queue 'long'
     validExitStatus 0
