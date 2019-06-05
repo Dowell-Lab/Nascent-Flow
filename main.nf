@@ -807,14 +807,14 @@ process bedgraphs {
     genomeCoverageBed \
                      -bg \
                      -strand + \
-                     -g hg38 \
+                     -g ${genome_id} \
                      -ibam ${bam_file} \
                      > ${name}.pos.bedGraph
 
     genomeCoverageBed \
                      -bg \
                      -strand - \
-                     -g hg38 \
+                     -g ${genome_id} \
                      -ibam ${bam_file} \
                      > ${name}.tmp.neg.bedGraph
 
