@@ -97,6 +97,7 @@ def helpMessage() {
         --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
         --prelimtfit                   Run Tfit using the built-in prelim module. FStitch not required with this setting.
         --dastk                        Run the first step in motif displacement analysis, "process_atac", using DAStk.
+        --dreg                         Produce bigwigs formatted for input to dREG.
 
     """.stripIndent()
 }
@@ -250,6 +251,7 @@ summary['FStitch']          = params.fstitch ? 'YES' : 'NO'
 summary['Prelim Tfit']      = params.prelimtfit ? 'YES' : 'NO'
 summary['Tfit']             = params.tfit ? 'YES' : 'NO'
 summary['DAStk']            = params.dastk ? 'YES' : 'NO'
+summary['dREG']             = params.dreg ? 'YES' : 'NO'
 if(params.fstitch)summary['FStitch dir']      = params.fstitch_path
 if(params.fstitch)summary['FStitch train']    = params.fstitch_train
 if(params.tfit)summary['Tfit dir']      = params.tfit_path
@@ -864,13 +866,16 @@ process dreg_prep {
     tag "$name"
     memory '150 GB'
     publishDir "${params.outdir}/mapped/dreg_input", mode: 'copy', pattern: "*.bw"
+    
+    when:
+    params.dreg
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_dreg_prep
     file(chrom_sizes) from chrom_sizes
 
     output:
-        set val(name), file("*.bw") into dreg_bigwig
+    set val(name), file("*.bw") into dreg_bigwig
 
     script:
     """
@@ -1097,7 +1102,7 @@ process tfit {
 process prelimtfit {
     tag "$name"
     memory '100 GB'
-    time '72h'
+    time '48h'
     cpus 16
     queue 'long'
     validExitStatus 0
