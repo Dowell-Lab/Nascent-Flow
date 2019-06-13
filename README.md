@@ -89,6 +89,7 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 | --saveTrim |               | Compresses and saves trimmed fastq reads.                 |
 | --saveAll  |               | Compresses and saves all fastq reads.                     |
 | --skipBAM  |               | Skips saving BAM files (only save CRAM). Default=False    |
+| --savebw   |               | Save normalized BigWig files for UCSC genome broswer.     |
 
 **Input File Options**
 
