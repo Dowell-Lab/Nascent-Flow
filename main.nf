@@ -82,6 +82,7 @@ def helpMessage() {
         --saveTrim                     Saves compressed trimmed fastq reads.
         --skipBAM                      Skip saving BAM files. Only CRAM files will be saved with this option.
         --saveAll                      Saves all compressed fastq reads.
+        --savebw                       Saves pos/neg bigwig files for UCSC genome browser.
 
     QC Options:
         --skipMultiQC                  Skip running MultiQC.
@@ -233,6 +234,7 @@ summary['Thread fqdump']    = params.threadfqdump ? 'YES' : 'NO'
 summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
 summary['Save BAM']         = params.skipBAM ? 'NO' : 'YES'
+summary['Save BigWig']      = params.savebw ? 'YES' : 'NO'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
@@ -303,7 +305,7 @@ process get_software_versions {
     hisat2 --version > v_hisat2.txt
     samtools --version > v_samtools.txt
     fastq-dump --version > v_fastq-dump.txt
-    preseq > v_preseq.txt
+    preseq 2> v_preseq.txt
     bedtools --version > v_bedtools.txt
     igvtools version > v_igv-tools.txt
     $fstitch_path train --version > v_fstitch.txt
@@ -497,7 +499,7 @@ process bbduk {
     } else {
         """
         echo ${name}
-        
+
         bbduk.sh -Xmx20g \
                   t=16 \
                   in=${name}.fastq.gz \
@@ -511,6 +513,30 @@ process bbduk {
                   refstats=${name}.refstats.txt
         """
     }
+    
+//    } else {
+//        """
+//        echo ${name}
+//        
+//        reformat.sh -Xmx20g \
+//                    t=16 \
+//                    -da ibq fixjunk=t \
+//                    in=${name}.fastq.gz \
+//                    out=${name}.quality_adjusted.fastq.gz
+//        
+//        bbduk.sh -Xmx20g \
+//                  t=16 \
+//                  in=${name}.quality_adjusted.fastq.gz \
+//                  out=${name}.trim.fastq.gz \
+//                  ref=${bbmap_adapters} \
+//                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+//                  maq=10 minlen=25 \
+//                  tpe tbo \
+//                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
+//                  stats=${name}.trimstats.txt \
+//                  refstats=${name}.refstats.txt
+//        """
+//    }    
 }
 
 
@@ -699,7 +725,7 @@ process preseq {
 process rseqc {
     tag "$name"
     time '8h'
-    validExitStatus 0,143
+    validExitStatus 0,1,143
     memory '40 GB'
     publishDir "${params.outdir}/qc/rseqc" , mode: 'copy',
         saveAs: {filename ->
@@ -784,7 +810,6 @@ process bedgraphs {
     tag "$name"
     memory '80 GB'
     time '4h'
-    publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "*{neg,pos}.bedGraph"
     publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"
     publishDir "${params.outdir}/mapped/rcc_bedgraphs", mode: 'copy', pattern: "${name}.rcc.bedGraph"
 
@@ -913,6 +938,9 @@ process normalized_bigwigs {
     tag "$name"
     memory '30 GB'
     publishDir "${params.outdir}/mapped/rcc_bigwig", mode: 'copy'
+    
+    when:
+    params.savebw
 
     input:
     set val(name), file(neg_bedgraph) from bedgraph_bigwig_neg
