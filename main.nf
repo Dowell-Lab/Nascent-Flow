@@ -296,6 +296,7 @@ process get_software_versions {
     output:
     file 'software_versions_mqc.yaml' into software_versions_yaml
     file '*.txt' into software_versions_text
+		file '*.status' into completion_status
 
     script:
     """
@@ -341,6 +342,7 @@ process sra_dump {
 
     output:
     set val(prefix), file("*.fastq.gz") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_gzip_sra
+		file '*.status' into completion_status
    
 
     script:
@@ -403,6 +405,7 @@ process fastQC {
 
     output:
     file "*.{zip,html,txt}" into fastqc_results
+		file '*.status' into completion_status
 
     script:
     """
@@ -435,6 +438,7 @@ process bbduk {
     output:
     set val(name), file ("*.trim.fastq.gz") into trimmed_reads_fastqc, trimmed_reads_hisat2
     file "*.txt" into trim_stats
+		file '*.status' into completion_status
 
     script:
     if (!params.singleEnd && params.flip) {
@@ -574,6 +578,7 @@ process fastQC_trimmed {
 
     output:
     file "*_fastqc.{zip,html,txt}" into trimmed_fastqc_results
+		file '*.status' into completion_status
 
     script:
     prefix = trimmed_reads.baseName
@@ -606,6 +611,7 @@ process hisat2 {
     output:
     set val(name), file("*.sam") into hisat2_sam
     file("*.txt") into hisat2_mapstats    
+		file '*.status' into completion_status
 
     script:
     //prefix = trimmed_reads.baseName
@@ -670,6 +676,7 @@ process samtools {
     set val(name), file("${name}.millionsmapped") into bam_milmapped_bedgraph
     set val(name), file("${name}.sorted.cram") into cram_out
     set val(name), file("${name}.sorted.cram.crai") into cram_index_out
+		file '*.status' into completion_status
 
     script:
     if (!params.singleEnd) {
@@ -729,6 +736,7 @@ process preseq {
 
     output:
     file("*.txt") into preseq_results
+		file '*.status' into completion_status
 
     script:
     """
@@ -776,6 +784,7 @@ process rseqc {
 
     output:
     file "*.{txt,pdf,r,xls}" into rseqc_results
+		file '*.status' into completion_status
 
     script:
     """
@@ -817,6 +826,7 @@ process pileup {
 
     output:
     file("*.txt") into pileup_results
+		file '*.status' into completion_status
 
     script:
     """
@@ -854,6 +864,7 @@ process bedgraphs {
     set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
     set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
     set val(name), file("${name}.neg.rcc.bedGraph") into bedgraph_bigwig_neg
+		file '*.status' into completion_status
 
     script:
     """
@@ -932,6 +943,7 @@ process dreg_prep {
 
     output:
     set val(name), file("*.bw") into dreg_bigwig
+		file '*.status' into completion_status
 
     script:
     """
@@ -982,6 +994,7 @@ process normalized_bigwigs {
 
     output:
     set val(name), file("*.rcc.bw") into normalized_bigwig
+		file '*.status' into completion_status
 
     script:
     """
@@ -1012,6 +1025,7 @@ process igvtools {
 
     output:
     set val(name), file("*.tdf") into tiled_data_ch
+		file '*.status' into completion_status
 
     script:
     """
@@ -1049,6 +1063,7 @@ process multiQC {
     output:
     file "*multiqc_report.html" into multiqc_report
     file "*_data" into multiqc_report_files
+		file '*.status' into completion_status
 
     script:
     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
@@ -1092,6 +1107,7 @@ process FStitch {
     file ("*fstitch_bidir.{short,long}.bed") into fs_bidir_short_long_out
     file ("*.html") into fs_bidir_plot_out
     file ("*.txt") into fs_bidir_stats_out
+		file '*.status' into completion_status
     
     script:
     """
@@ -1153,6 +1169,7 @@ process tfit {
     set val(name), file ("${name}.tfit_bidirs.bed") into tfit_bed_out
     file ("*.tsv") into tfit_full_model_out
     file ("*.log") into tfit_logs_out
+		file '*.status' into completion_status
         
     script:
         """
@@ -1192,6 +1209,7 @@ process prelimtfit {
     file ("*tfit_bidirs.bed") into prelimtfit_bed_out
     file ("*.tsv") into prelimtfit_full_model_out
     file ("*.log") into prelimtfit_logs_out
+		file '*.status' into completion_status
         
     script:
         """
@@ -1238,6 +1256,7 @@ process DAStk {
        
     output:
     file ("*.txt") into dastk_bed_out
+		file '*.status' into completion_status
         
     script:
         """
@@ -1272,6 +1291,7 @@ process multicov {
        
     output:
     file ("*.bed") into counts_bed_out
+		file '*.status' into completion_status
         
     script:
         """
@@ -1303,6 +1323,7 @@ process merge_multicov {
        
     output:
     file ("merged_counts.bed") into merged_counts_bed_out
+		file '*.status' into completion_status
         
     script:
         """
