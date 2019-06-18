@@ -370,7 +370,7 @@ process sra_dump {
         echo ${prefix}
 
         fastq-dump --split-3 ${reads} --gzip
-        echo "true" > sra_dump.status
+        echo "true" > ${prefix}.sra_dump.status
         """
     } else {
         """
@@ -380,7 +380,7 @@ process sra_dump {
             --threads 8 \
             --gzip \
             --sra-id ${reads}
-        echo "true" > sra_dump.status
+        echo "true" > ${prefix}.sra_dump.status
         """
     }
 }
@@ -412,7 +412,7 @@ process fastQC {
     echo ${prefix}
 
     fastqc $reads
-    echo "true" > fastqc.status
+    echo "true" > ${prefix}.fastqc.status
     """
 }
 
@@ -466,7 +466,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
-        echo "true" > bbduk.status
+        echo "true" > ${name}.bbduk.status
         """
     } else if (params.flip) {
         """
@@ -491,7 +491,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
-        echo "true" > bbduk.status
+        echo "true" > ${name}.bbduk.status
         """
     }
         else if (!params.singleEnd) {
@@ -511,7 +511,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
-        echo "true" > bbduk.status
+        echo "true" > ${name}.bbduk.status
         """
     } else {
         """
@@ -528,7 +528,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
-        echo "true" > bbduk.status
+        echo "true" > ${name}.bbduk.status
         """
     }
     
@@ -586,7 +586,7 @@ process fastQC_trimmed {
     echo ${prefix}
 
     fastqc ${trimmed_reads}
-    echo "true" > fastqc_trimmed.status
+    echo "true" > ${prefix}.fastqc_trimmed.status
     """
 }
 
@@ -628,7 +628,7 @@ process hisat2 {
                 --new-summary \
                 --summary-file ${name}.hisat2_summary.txt \
                 > ${name}.sam
-        echo "true" > hisat2.status
+        echo "true" > ${name}.hisat2.status
         """
     } else {
         """
@@ -642,7 +642,7 @@ process hisat2 {
                 --new-summary \
                 --summary-file ${name}.hisat2_summary.txt \
                 > ${name}.sam
-        echo "true" > hisat2.status
+        echo "true" > ${name}.hisat2.status
         """
     }
 }
@@ -690,7 +690,7 @@ process samtools {
     samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
     samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
     samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
-    echo "true" > samtools.status
+    echo "true" > ${name}.samtools.status
     """
     } else {
     """
@@ -703,7 +703,7 @@ process samtools {
     samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
     samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
     samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
-    echo "true" > samtools.status
+    echo "true" > ${name}.samtools.status
     """
     }
 }
@@ -745,7 +745,7 @@ process preseq {
 
     preseq lc_extrap -B -o ${name}.lc_extrap.txt \
            ${bam_file}
-    echo "true" > preseq.status
+    echo "true" > ${name}.preseq.status
     """
  }
 
@@ -801,7 +801,7 @@ process rseqc {
     infer_experiment.py -i ${bam_file} \
                         -r ${genome_refseq} \
                         > ${name}.infer_experiment.txt
-    echo "true" > rseqc.status
+    echo "true" > ${name}.rseqc.status
     """
  }
 
@@ -835,7 +835,7 @@ process pileup {
               in=${bam_file} \
               out=${name}.coverage.stats.txt \
               hist=${name}.coverage.hist.txt
-    echo "true" > pileup.status
+    echo "true" > ${name}.pileup.status
     """
  }
 
@@ -918,7 +918,7 @@ process bedgraphs {
     sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
     rm ${name}.unsorted.neg.rcc.bedGraph
 
-    echo "true" > bedgraphs.status
+    echo "true" > ${name}.bedgraphs.status
     """
  }
 
@@ -969,7 +969,7 @@ process dreg_prep {
     ${params.bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
 
     echo bedGraph to bigwig done
-    echo "true" > dreg_prep.status
+    echo "true" > ${name}.dreg_prep.status
     """
  }
 
@@ -1001,7 +1001,7 @@ process normalized_bigwigs {
     ${params.bedGraphToBigWig} ${pos_bedgraph} ${chrom_sizes} ${name}.pos.rcc.bw
     ${params.bedGraphToBigWig} ${neg_bedgraph} ${chrom_sizes} ${name}.neg.rcc.bw
 
-    echo "true" > normalized_bigwigs.status
+    echo "true" > ${name}.normalized_bigwigs.status
     """
 }
 
@@ -1030,7 +1030,7 @@ process igvtools {
     script:
     """
     igvtools toTDF ${normalized_bg} ${name}.rcc.tdf ${chrom_sizes}
-    echo "true" > igvtools.status
+    echo "true" > ${name}.igvtools.status
     """
  }
 
@@ -1139,7 +1139,7 @@ process FStitch {
         -o ${name}.fstitch_bidir.bed \
         -p \
         -s    
-    echo "true" > fstitch.status
+    echo "true" > ${name}.fstitch.status
     """
 }
 
@@ -1182,7 +1182,7 @@ process tfit {
             -l \
             -o ${name}.tfit_bidirs.bed \
             --threads 16 \
-        echo "true" > tfit.status
+        echo "true" > ${name}.tfit.status
         """
 }
 
@@ -1229,7 +1229,7 @@ process prelimtfit {
             -l \
             -o ${name}.tfit_bidirs.bed \
             --threads 16
-        echo "true" > tfit_prelim.status
+        echo "true" > ${name}.tfit_prelim.status
         """
 }
 
@@ -1266,7 +1266,7 @@ process DAStk {
             --atac-peaks ${bed} \
             --motif-path ${motif_path} \
             --output .
-        echo "true" > dastk.status
+        echo "true" > ${name}.dastk.status
         """
 }
 
@@ -1299,7 +1299,7 @@ process multicov {
             -bams ${count_bam} \
             -bed ${genome_refseq} \
             > ${name}_counts.bed
-        echo "true" > multicov.status
+        echo "true" > ${name}.multicov.status
         """
 }
 
