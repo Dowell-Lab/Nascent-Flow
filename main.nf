@@ -296,7 +296,7 @@ process get_software_versions {
     output:
     file 'software_versions_mqc.yaml' into software_versions_yaml
     file '*.txt' into software_versions_text
-		file '*.status' into completion_status_versions
+    file '*.status' into completion_status_versions
 
     script:
     """
@@ -317,7 +317,7 @@ process get_software_versions {
         cat \$X >> all_versions.txt;
     done
     scrape_software_versions.py > software_versions_mqc.yaml
-		echo "true" > software_versions.status
+    echo "true" > software_versions.status
     """
 }
 
@@ -342,7 +342,7 @@ process sra_dump {
 
     output:
     set val(prefix), file("*.fastq.gz") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_gzip_sra
-		file '*.status' into completion_status_sra_dump
+    file '*.status' into completion_status_sra_dump
    
 
     script:
@@ -352,7 +352,7 @@ process sra_dump {
         echo ${prefix}
 
         fastq-dump ${reads} --gzip
-				echo "true" > sra_dump.status
+        echo "true" > sra_dump.status
         """
     } else if (!params.singleEnd) {
          """
@@ -363,14 +363,14 @@ process sra_dump {
             --gzip \
             --split-3 \
             --sra-id ${reads}
-				echo "true" > sra_dump.status
+        echo "true" > sra_dump.status
         """
     } else if (!params.threadfqdump && !params.singleEnd) {
         """
         echo ${prefix}
 
         fastq-dump --split-3 ${reads} --gzip
-				echo "true" > sra_dump.status
+        echo "true" > sra_dump.status
         """
     } else {
         """
@@ -380,7 +380,7 @@ process sra_dump {
             --threads 8 \
             --gzip \
             --sra-id ${reads}
-				echo "true" > sra_dump.status
+        echo "true" > sra_dump.status
         """
     }
 }
@@ -405,14 +405,14 @@ process fastQC {
 
     output:
     file "*.{zip,html,txt}" into fastqc_results
-		file '*.status' into completion_status_fastqc
+    file '*.status' into completion_status_fastqc
 
     script:
     """
     echo ${prefix}
 
     fastqc $reads
-		echo "true" > fastqc.status
+    echo "true" > fastqc.status
     """
 }
 
@@ -438,7 +438,7 @@ process bbduk {
     output:
     set val(name), file ("*.trim.fastq.gz") into trimmed_reads_fastqc, trimmed_reads_hisat2
     file "*.txt" into trim_stats
-		file '*.status' into completion_status_bbduk
+    file '*.status' into completion_status_bbduk
 
     script:
     if (!params.singleEnd && params.flip) {
@@ -466,7 +466,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
-				echo "true" > bbduk.status
+        echo "true" > bbduk.status
         """
     } else if (params.flip) {
         """
@@ -491,7 +491,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
-				echo "true" > bbduk.status
+        echo "true" > bbduk.status
         """
     }
         else if (!params.singleEnd) {
@@ -511,7 +511,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
-				echo "true" > bbduk.status
+        echo "true" > bbduk.status
         """
     } else {
         """
@@ -528,7 +528,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
-				echo "true" > bbduk.status
+        echo "true" > bbduk.status
         """
     }
     
@@ -578,7 +578,7 @@ process fastQC_trimmed {
 
     output:
     file "*_fastqc.{zip,html,txt}" into trimmed_fastqc_results
-		file '*.status' into completion_status_fastqc_trimmed
+    file '*.status' into completion_status_fastqc_trimmed
 
     script:
     prefix = trimmed_reads.baseName
@@ -586,7 +586,7 @@ process fastQC_trimmed {
     echo ${prefix}
 
     fastqc ${trimmed_reads}
-		echo "true" > fastqc_trimmed.status
+    echo "true" > fastqc_trimmed.status
     """
 }
 
@@ -611,7 +611,7 @@ process hisat2 {
     output:
     set val(name), file("*.sam") into hisat2_sam
     file("*.txt") into hisat2_mapstats    
-		file '*.status' into completion_status_hisat2
+    file '*.status' into completion_status_hisat2
 
     script:
     //prefix = trimmed_reads.baseName
@@ -628,7 +628,7 @@ process hisat2 {
                 --new-summary \
                 --summary-file ${name}.hisat2_summary.txt \
                 > ${name}.sam
-				echo "true" > hisat2.status
+        echo "true" > hisat2.status
         """
     } else {
         """
@@ -642,7 +642,7 @@ process hisat2 {
                 --new-summary \
                 --summary-file ${name}.hisat2_summary.txt \
                 > ${name}.sam
-				echo "true" > hisat2.status
+        echo "true" > hisat2.status
         """
     }
 }
@@ -676,7 +676,7 @@ process samtools {
     set val(name), file("${name}.millionsmapped") into bam_milmapped_bedgraph
     set val(name), file("${name}.sorted.cram") into cram_out
     set val(name), file("${name}.sorted.cram.crai") into cram_index_out
-		file '*.status' into completion_status_samtools
+    file '*.status' into completion_status_samtools
 
     script:
     if (!params.singleEnd) {
@@ -690,7 +690,7 @@ process samtools {
     samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
     samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
     samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
-		echo "true" > samtools.status
+    echo "true" > samtools.status
     """
     } else {
     """
@@ -703,7 +703,7 @@ process samtools {
     samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
     samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
     samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
-		echo "true" > samtools.status
+    echo "true" > samtools.status
     """
     }
 }
@@ -736,7 +736,7 @@ process preseq {
 
     output:
     file("*.txt") into preseq_results
-		file '*.status' into completion_status_preseq
+    file '*.status' into completion_status_preseq
 
     script:
     """
@@ -745,7 +745,7 @@ process preseq {
 
     preseq lc_extrap -B -o ${name}.lc_extrap.txt \
            ${bam_file}
-		echo "true" > preseq.status
+    echo "true" > preseq.status
     """
  }
 
@@ -784,7 +784,7 @@ process rseqc {
 
     output:
     file "*.{txt,pdf,r,xls}" into rseqc_results
-		file '*.status' into completion_status_rseqc
+    file '*.status' into completion_status_rseqc
 
     script:
     """
@@ -801,7 +801,7 @@ process rseqc {
     infer_experiment.py -i ${bam_file} \
                         -r ${genome_refseq} \
                         > ${name}.infer_experiment.txt
-		echo "true" > rseqc.status
+    echo "true" > rseqc.status
     """
  }
 
@@ -826,7 +826,7 @@ process pileup {
 
     output:
     file("*.txt") into pileup_results
-		file '*.status' into completion_status_pileup
+    file '*.status' into completion_status_pileup
 
     script:
     """
@@ -835,7 +835,7 @@ process pileup {
               in=${bam_file} \
               out=${name}.coverage.stats.txt \
               hist=${name}.coverage.hist.txt
-		echo "true" > pileup.status
+    echo "true" > pileup.status
     """
  }
 
@@ -864,7 +864,7 @@ process bedgraphs {
     set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
     set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
     set val(name), file("${name}.neg.rcc.bedGraph") into bedgraph_bigwig_neg
-		file '*.status' into completion_status_bedgraphs
+    file '*.status' into completion_status_bedgraphs
 
     script:
     """
@@ -918,7 +918,7 @@ process bedgraphs {
     sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
     rm ${name}.unsorted.neg.rcc.bedGraph
 
-		echo "true" > bedgraphs.status
+    echo "true" > bedgraphs.status
     """
  }
 
@@ -943,7 +943,7 @@ process dreg_prep {
 
     output:
     set val(name), file("*.bw") into dreg_bigwig
-		file '*.status' into completion_status_dreg_prep
+    file '*.status' into completion_status_dreg_prep
 
     script:
     """
@@ -969,7 +969,7 @@ process dreg_prep {
     ${params.bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
 
     echo bedGraph to bigwig done
-		echo "true" > dreg_prep.status
+    echo "true" > dreg_prep.status
     """
  }
 
@@ -994,14 +994,14 @@ process normalized_bigwigs {
 
     output:
     set val(name), file("*.rcc.bw") into normalized_bigwig
-		file '*.status' into completion_status_normalized_bigwigs
+    file '*.status' into completion_status_normalized_bigwigs
 
     script:
     """
     ${params.bedGraphToBigWig} ${pos_bedgraph} ${chrom_sizes} ${name}.pos.rcc.bw
     ${params.bedGraphToBigWig} ${neg_bedgraph} ${chrom_sizes} ${name}.neg.rcc.bw
 
-		echo "true" > normalized_bigwigs.status
+    echo "true" > normalized_bigwigs.status
     """
 }
 
@@ -1025,12 +1025,12 @@ process igvtools {
 
     output:
     set val(name), file("*.tdf") into tiled_data_ch
-		file '*.status' into completion_status_igvtools
+    file '*.status' into completion_status_igvtools
 
     script:
     """
     igvtools toTDF ${normalized_bg} ${name}.rcc.tdf ${chrom_sizes}
-		echo "true" > igvtools.status
+    echo "true" > igvtools.status
     """
  }
 
@@ -1063,7 +1063,7 @@ process multiQC {
     output:
     file "*multiqc_report.html" into multiqc_report
     file "*_data" into multiqc_report_files
-		file '*.status' into completion_status_multiqc
+    file '*.status' into completion_status_multiqc
 
     script:
     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
@@ -1071,7 +1071,7 @@ process multiQC {
 
     """
     multiqc . -f $rtitle $rfilename --config $multiqc_config
-		echo "true" > multiqc.status
+    echo "true" > multiqc.status
     """
 }
 
@@ -1107,7 +1107,7 @@ process FStitch {
     file ("*fstitch_bidir.{short,long}.bed") into fs_bidir_short_long_out
     file ("*.html") into fs_bidir_plot_out
     file ("*.txt") into fs_bidir_stats_out
-		file '*.status' into completion_status_fstitch
+    file '*.status' into completion_status_fstitch
     
     script:
     """
@@ -1139,7 +1139,7 @@ process FStitch {
         -o ${name}.fstitch_bidir.bed \
         -p \
         -s    
-		echo "true" > fstitch.status
+    echo "true" > fstitch.status
     """
 }
 
@@ -1169,7 +1169,7 @@ process tfit {
     set val(name), file ("${name}.tfit_bidirs.bed") into tfit_bed_out
     file ("*.tsv") into tfit_full_model_out
     file ("*.log") into tfit_logs_out
-		file '*.status' into completion_status_tfit
+    file '*.status' into completion_status_tfit
         
     script:
         """
@@ -1182,7 +1182,7 @@ process tfit {
             -l \
             -o ${name}.tfit_bidirs.bed \
             --threads 16 \
-				echo "true" > tfit.status
+        echo "true" > tfit.status
         """
 }
 
@@ -1209,7 +1209,7 @@ process prelimtfit {
     file ("*tfit_bidirs.bed") into prelimtfit_bed_out
     file ("*.tsv") into prelimtfit_full_model_out
     file ("*.log") into prelimtfit_logs_out
-		file '*.status' into completion_status_prelimtfit
+    file '*.status' into completion_status_prelimtfit
         
     script:
         """
@@ -1229,7 +1229,7 @@ process prelimtfit {
             -l \
             -o ${name}.tfit_bidirs.bed \
             --threads 16
-				echo "true" > tfit_prelim.status
+        echo "true" > tfit_prelim.status
         """
 }
 
@@ -1256,7 +1256,7 @@ process DAStk {
        
     output:
     file ("*.txt") into dastk_bed_out
-		file '*.status' into completion_status_dastk
+    file '*.status' into completion_status_dastk
         
     script:
         """
@@ -1266,7 +1266,7 @@ process DAStk {
             --atac-peaks ${bed} \
             --motif-path ${motif_path} \
             --output .
-				echo "true" > dastk.status
+        echo "true" > dastk.status
         """
 }
 
@@ -1291,7 +1291,7 @@ process multicov {
        
     output:
     file ("*.bed") into counts_bed_out
-		file '*.status' into completion_status_multicov
+    file '*.status' into completion_status_multicov
         
     script:
         """
@@ -1299,7 +1299,7 @@ process multicov {
             -bams ${count_bam} \
             -bed ${genome_refseq} \
             > ${name}_counts.bed
-				echo "true" > multicov.status
+        echo "true" > multicov.status
         """
 }
 
@@ -1323,14 +1323,14 @@ process merge_multicov {
        
     output:
     file ("merged_counts.bed") into merged_counts_bed_out
-		file '*.status' into completion_status_merge_multicov
+    file '*.status' into completion_status_merge_multicov
         
     script:
         """
         python3 ${params.merge_counts} \
             -b './counts/' \
             -o merged_counts.bed \
-				echo "true" > merge_multicov.status
+        echo "true" > merge_multicov.status
         """
 }
 
