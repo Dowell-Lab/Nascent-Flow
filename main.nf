@@ -291,6 +291,7 @@ try {
 process get_software_versions {
     validExitStatus 0,1,127
     publishDir "${params.outdir}/software_versions/", mode: 'copy', pattern: '*.txt'
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
 
     output:
     file 'software_versions_mqc.yaml' into software_versions_yaml
@@ -315,6 +316,7 @@ process get_software_versions {
         cat \$X >> all_versions.txt;
     done
     scrape_software_versions.py > software_versions_mqc.yaml
+		echo "true" > software_versions.status
     """
 }
 
@@ -332,6 +334,7 @@ process sra_dump {
     if (params.savefq || params.saveAllfq) {
         publishDir "${params.outdir}/fastq", mode: 'copy'
     }
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     input:
     set val(prefix), file(reads) from read_files_sra
@@ -347,6 +350,7 @@ process sra_dump {
         echo ${prefix}
 
         fastq-dump ${reads} --gzip
+				echo "true" > sra_dump.status
         """
     } else if (!params.singleEnd) {
          """
@@ -357,12 +361,14 @@ process sra_dump {
             --gzip \
             --split-3 \
             --sra-id ${reads}
+				echo "true" > sra_dump.status
         """
     } else if (!params.threadfqdump && !params.singleEnd) {
         """
         echo ${prefix}
 
         fastq-dump --split-3 ${reads} --gzip
+				echo "true" > sra_dump.status
         """
     } else {
         """
@@ -372,6 +378,7 @@ process sra_dump {
             --threads 8 \
             --gzip \
             --sra-id ${reads}
+				echo "true" > sra_dump.status
         """
     }
 }
@@ -386,6 +393,7 @@ process fastQC {
     memory '8 GB'
     publishDir "${params.outdir}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     !params.skipFastQC && !params.skipAllQC
@@ -401,6 +409,7 @@ process fastQC {
     echo ${prefix}
 
     fastqc $reads
+		echo "true" > fastqc.status
     """
 }
 
@@ -418,6 +427,7 @@ process bbduk {
     if (params.saveTrim || params.saveAllfq) {
         publishDir "${params.outdir}/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
     }    
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
 
     input:
     set val(name), file(reads) from fastq_reads_trim.mix(fastq_reads_trim_sra)
@@ -452,6 +462,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
+				echo "true" > bbduk.status
         """
     } else if (params.flip) {
         """
@@ -476,6 +487,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
+				echo "true" > bbduk.status
         """
     }
         else if (!params.singleEnd) {
@@ -495,6 +507,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
+				echo "true" > bbduk.status
         """
     } else {
         """
@@ -511,6 +524,7 @@ process bbduk {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
+				echo "true" > bbduk.status
         """
     }
     
@@ -550,6 +564,7 @@ process fastQC_trimmed {
     memory '4 GB'
     publishDir "${params.outdir}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     !params.skipFastQC && !params.skipAllQC    
@@ -566,6 +581,7 @@ process fastQC_trimmed {
     echo ${prefix}
 
     fastqc ${trimmed_reads}
+		echo "true" > fastqc_trimmed.status
     """
 }
 
@@ -580,6 +596,7 @@ process hisat2 {
     memory '40 GB'
     time '2h'
     publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
 
     input:
     file(indices) from hisat2_indices
@@ -605,6 +622,7 @@ process hisat2 {
                 --new-summary \
                 --summary-file ${name}.hisat2_summary.txt \
                 > ${name}.sam
+				echo "true" > hisat2.status
         """
     } else {
         """
@@ -618,6 +636,7 @@ process hisat2 {
                 --new-summary \
                 --summary-file ${name}.hisat2_summary.txt \
                 > ${name}.sam
+				echo "true" > hisat2.status
         """
     }
 }
@@ -639,6 +658,7 @@ process samtools {
         else if (filename.indexOf("sorted.cram") > 0)                 "mapped/crams/$filename"
         else if (filename.indexOf("sorted.cram.crai") > 0)            "mapped/crams/$filename"
     }
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
 
     input:
     set val(name), file(mapped_sam) from hisat2_sam
@@ -663,6 +683,7 @@ process samtools {
     samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
     samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
     samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
+		echo "true" > samtools.status
     """
     } else {
     """
@@ -675,6 +696,7 @@ process samtools {
     samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
     samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
     samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
+		echo "true" > samtools.status
     """
     }
 }
@@ -696,6 +718,7 @@ process preseq {
     time '8h'
     errorStrategy 'ignore'
     publishDir "${params.outdir}/qc/preseq/", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     !params.skippreseq && !params.skipAllQC    
@@ -714,6 +737,7 @@ process preseq {
 
     preseq lc_extrap -B -o ${name}.lc_extrap.txt \
            ${bam_file}
+		echo "true" > preseq.status
     """
  }
 
@@ -741,6 +765,7 @@ process rseqc {
             else if (filename.indexOf("RPKM_saturation.saturation.r") > 0)      "RPKM_saturation/rscripts/$filename"
             else filename
         }
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     !params.skipRSeQC && !params.skipAllQC
@@ -767,6 +792,7 @@ process rseqc {
     infer_experiment.py -i ${bam_file} \
                         -r ${genome_refseq} \
                         > ${name}.infer_experiment.txt
+		echo "true" > rseqc.status
     """
  }
 
@@ -780,6 +806,7 @@ process pileup {
     tag "$name"
     memory '50 GB'
     publishDir "${params.outdir}/qc/pileup", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     !params.skippileup && !params.skipAllQC    
@@ -798,6 +825,7 @@ process pileup {
               in=${bam_file} \
               out=${name}.coverage.stats.txt \
               hist=${name}.coverage.hist.txt
+		echo "true" > pileup.status
     """
  }
 
@@ -812,6 +840,7 @@ process bedgraphs {
     time '4h'
     publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"
     publishDir "${params.outdir}/mapped/rcc_bedgraphs", mode: 'copy', pattern: "${name}.rcc.bedGraph"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_bedgraph
@@ -878,6 +907,7 @@ process bedgraphs {
     sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
     rm ${name}.unsorted.neg.rcc.bedGraph
 
+		echo "true" > bedgraphs.status
     """
  }
 
@@ -891,6 +921,7 @@ process dreg_prep {
     tag "$name"
     memory '150 GB'
     publishDir "${params.outdir}/mapped/dreg_input", mode: 'copy', pattern: "*.bw"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     params.dreg
@@ -926,6 +957,7 @@ process dreg_prep {
     ${params.bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
 
     echo bedGraph to bigwig done
+		echo "true" > dreg_prep.status
     """
  }
 
@@ -938,6 +970,7 @@ process normalized_bigwigs {
     tag "$name"
     memory '30 GB'
     publishDir "${params.outdir}/mapped/rcc_bigwig", mode: 'copy'
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     params.savebw
@@ -955,6 +988,7 @@ process normalized_bigwigs {
     ${params.bedGraphToBigWig} ${pos_bedgraph} ${chrom_sizes} ${name}.pos.rcc.bw
     ${params.bedGraphToBigWig} ${neg_bedgraph} ${chrom_sizes} ${name}.neg.rcc.bw
 
+		echo "true" > normalized_bigwigs.status
     """
 }
 
@@ -970,6 +1004,7 @@ process igvtools {
     // and re-run later as it's non-essential.
     errorStrategy 'ignore'
     publishDir "${params.outdir}/mapped/tdfs", mode: 'copy', pattern: "*.tdf"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
 
     input:
     set val(name), file(normalized_bg) from bedgraph_tdf
@@ -981,6 +1016,7 @@ process igvtools {
     script:
     """
     igvtools toTDF ${normalized_bg} ${name}.rcc.tdf ${chrom_sizes}
+		echo "true" > igvtools.status
     """
  }
 
@@ -994,6 +1030,7 @@ process multiQC {
     errorStrategy 'ignore'
     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "*_data"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
 
     when:
     !params.skipMultiQC && !params.skipAllQC
@@ -1019,6 +1056,7 @@ process multiQC {
 
     """
     multiqc . -f $rtitle $rfilename --config $multiqc_config
+		echo "true" > multiqc.status
     """
 }
 
@@ -1037,6 +1075,7 @@ process FStitch {
     publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "*fstitch_bidir.{short,long}.bed"
     publishDir "${params.outdir}/fstitch/bidirs/hist/", mode: 'copy', pattern: "*.html"
     publishDir "${params.outdir}/fstitch/bidirs/stats/", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     params.fstitch
@@ -1084,6 +1123,7 @@ process FStitch {
         -o ${name}.fstitch_bidir.bed \
         -p \
         -s    
+		echo "true" > fstitch.status
     """
 }
 
@@ -1100,6 +1140,7 @@ process tfit {
     validExitStatus 0
     publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     params.tfit
@@ -1124,6 +1165,7 @@ process tfit {
             -l \
             -o ${name}.tfit_bidirs.bed \
             --threads 16 \
+				echo "true" > tfit.status
         """
 }
 
@@ -1137,6 +1179,7 @@ process prelimtfit {
     publishDir "${params.outdir}/prelimtfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
     publishDir "${params.outdir}/prelimtfit/logs", mode: 'copy', pattern: "*{tsv,log}"
     publishDir "${params.outdir}/prelimtfit/prelim", mode: 'copy', pattern: "*tfit_prelim.bed"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     params.prelimtfit
@@ -1168,6 +1211,7 @@ process prelimtfit {
             -l \
             -o ${name}.tfit_bidirs.bed \
             --threads 16
+				echo "true" > tfit_prelim.status
         """
 }
 
@@ -1182,6 +1226,7 @@ process DAStk {
     cpus 16
     validExitStatus 0
     publishDir "${params.outdir}/dastk", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     params.dastk && params.tfit
@@ -1202,6 +1247,7 @@ process DAStk {
             --atac-peaks ${bed} \
             --motif-path ${motif_path} \
             --output .
+				echo "true" > dastk.status
         """
 }
 
@@ -1215,6 +1261,7 @@ process multicov {
     time '2h'
     validExitStatus 0
     publishDir "${params.outdir}/counts", mode: 'copy', pattern: "*.bed"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     params.counts
@@ -1232,6 +1279,7 @@ process multicov {
             -bams ${count_bam} \
             -bed ${genome_refseq} \
             > ${name}_counts.bed
+				echo "true" > multicov.status
         """
 }
 
@@ -1245,6 +1293,7 @@ process merge_multicov {
     time '1h'
     validExitStatus 0
     publishDir "${params.outdir}/counts", mode: 'copy', pattern: "merged_counts.bed"
+    publishDir "${params.outdir}/completion_status/", mode: 'copy', pattern: '*.status'
     
     when:
     params.counts
@@ -1260,6 +1309,7 @@ process merge_multicov {
         python3 ${params.merge_counts} \
             -b './counts/' \
             -o merged_counts.bed \
+				echo "true" > merge_multicov.status
         """
 }
 
