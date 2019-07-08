@@ -10,6 +10,7 @@ regexes = {
     'MultiQC': ['v_multiqc.txt', r"multiqc, version (\S+)"],
     'Samtools': ['v_samtools.txt', r"samtools (\S+)"],
     'fasterq-dump': ['v_fasterq-dump.txt', r"fasterq-dump : (\S+)"],
+    'RseQC': ['v_rseqc.txt', r"RSeQC version(\S+)"],
     'Bedtools': ['v_bedtools.txt', r"bedtools v(\S+)"],
     'IGV Tools': ['v_igv-tools.txt', r"IGV Version (\S+)"],
     'BBduk': ['v_bbduk.txt', r"BBDuk Trimming version(\S+)"],
@@ -17,6 +18,7 @@ regexes = {
     'preseq': ['v_preseq.txt', r"Preseq version(\S+)"],
     'FStitch': ['v_fstitch.txt', r"FStitch version(\S+)"],
     'Tfit': ['v_tfit.txt', r"Tfit version(\S+)"],
+    'DAStk': ['v_dastk.txt', r"DAStk version(\S+)"],
 }
     #'RseQC': ['v_rseqc.txt', r"RSeQC version(\S+)"],
     

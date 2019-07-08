@@ -310,6 +310,8 @@ process get_software_versions {
     igvtools version > v_igv-tools.txt
     $fstitch_path train --version > v_fstitch.txt
     $tfit_path model --version > v_tfit.txt
+    process_atac --version > v_dastk.txt
+    infer_experiment.py --version > v_rseqc.txt
 
     for X in `ls *.txt`; do
         cat \$X >> all_versions.txt;
