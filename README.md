@@ -6,7 +6,7 @@
 
 Clone this repository in your home directory:
 
-    $ git clone git@github.com:Dowell-Lab/Nascent-Flow.git
+    $ git clone https://github.com/Dowell-Lab/Nascent-Flow.git
 
 Install Nextflow:
 
