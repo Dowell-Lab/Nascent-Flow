@@ -11,34 +11,25 @@
  Margaret Gruca <magr0763@colorado.edu>
 ========================================================================================
 ========================================================================================
-
 Pipeline steps:
-
     1. Pre-processing sra/fastq
         1a. SRA tools -- fasterq-dump sra to generate fastq file
         1b. FastQC (pre-trim) -- perform pre-trim FastQC on fastq files
-
     2. Trimming
         2a. BBDuk -- trim fastq files for quality and adapters
         2b. FastQC (post-trim) -- perform post-trim FastQC on fastq files (ensure trimming performs as expected)
-
     3. Mapping w/ HISAT2 -- map to genome reference file
-
     4. SAMtools -- convert SAM file to BAM, index BAM, flagstat BAM
-
     5. Quality control
         5a. preseq -- estimate library complexity
         5b. RSeQC -- calculate genomic coverage relative to a reference file, infer experiement (single- v. paired-end), read duplication
         5c. Pileup.sh : BBMap Suite -- genomic coverage by chromosome, GC content, pos/neg reads, intron/exon ratio
-
     6. Coverage files
         6d. BEDTools : non-normalized & nornmalized bedgraphs
         6b. BEDTools and kentUtils : 5' bigwigs for dREG & normalized bigwigs for genome browser
         
     7. Normalizing bigwigs for Genome Browser use
-
     8. IGV Tools : bedGraph --> tdf
-
     9. MultiQC : generate QC report for pipeline
     
     10. FStitch : Segment data into active and inactive transcriptional regions and annotate bidirectionals
@@ -46,7 +37,6 @@ Pipeline steps:
     11. Tfit/PrelimTfit : Annotate and model sites of RNAPII activity (bidirectional signal)
     
     12. DAStk : Run motif displacement analysis
-
 */
 
 
@@ -56,11 +46,8 @@ def helpMessage() {
      NascentFlow v${params.version}
     =========================================
     Usage:
-
     The typical command for running the pipeline is as follows:
-
     nextflow run main.nf -profile slurm --fastqs '/project/*_{R1,R2}*.fastq' --outdir '/project/'
-
     Required arguments:
          -profile                      Configuration profile to use. <base, slurm>
          --genomeid                    Genome ID (e.g. hg38, mm10, rn6, etc.).
@@ -68,14 +55,11 @@ def helpMessage() {
          --sras                        Directory pattern for SRA files: /project/*.sras (Required if --fastqs not specified)
          --workdir                     Nextflow working directory where all intermediate files are saved.
          --email                       Where to send workflow report email.
-
     Performance options:
         --threadfqdump                 Runs multi-threading for fastq-dump for sra processing.
-
     Input File options:
         --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
         --flip                         Reverse complements each strand. Necessary for some library preps.
-
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
         --savefq                       Saves compressed raw fastq reads.
@@ -83,7 +67,6 @@ def helpMessage() {
         --skipBAM                      Skip saving BAM files. Only CRAM files will be saved with this option.
         --saveAll                      Saves all compressed fastq reads.
         --savebw                       Saves pos/neg bigwig files for UCSC genome browser.
-
     QC Options:
         --skipMultiQC                  Skip running MultiQC.
         --skipFastQC                   Skip running FastQC.
@@ -99,7 +82,6 @@ def helpMessage() {
         --prelimtfit                   Run Tfit using the built-in prelim module. FStitch not required with this setting.
         --dastk                        Run the first step in motif displacement analysis, "process_atac", using DAStk.
         --dreg                         Produce bigwigs formatted for input to dREG.
-
     """.stripIndent()
 }
 
@@ -312,7 +294,6 @@ process get_software_versions {
     $tfit_path model --version > v_tfit.txt
     process_atac --version > v_dastk.txt
     infer_experiment.py --version > v_rseqc.txt
-
     for X in `ls *.txt`; do
         cat \$X >> all_versions.txt;
     done
@@ -347,13 +328,11 @@ process sra_dump {
     if (!params.threadfqdump) {
         """
         echo ${prefix}
-
         fastq-dump ${reads} --gzip
         """
     } else if (!params.singleEnd) {
          """
         export PATH=~/.local/bin:$PATH
-
         parallel-fastq-dump \
             --threads 8 \
             --gzip \
@@ -363,13 +342,11 @@ process sra_dump {
     } else if (!params.threadfqdump && !params.singleEnd) {
         """
         echo ${prefix}
-
         fastq-dump --split-3 ${reads} --gzip
         """
     } else {
         """
         export PATH=~/.local/bin:$PATH
-
         parallel-fastq-dump \
             --threads 8 \
             --gzip \
@@ -401,7 +378,6 @@ process fastQC {
     script:
     """
     echo ${prefix}
-
     fastqc $reads
     """
 }
@@ -432,7 +408,6 @@ process bbduk {
     if (!params.singleEnd && params.flip) {
         """
         echo ${name}
-
         reformat.sh -Xmx20g \
                 t=16 \
                 in=${name}_R1.fastq.gz \
@@ -440,7 +415,6 @@ process bbduk {
                 out=${name}_R1.flip.fastq.gz \
                 out2=${name}_R2.flip.fastq.gz \
                 rcomp=t        
-
         bbduk.sh -Xmx20g \
                   t=16 \
                   in=${name}_R1.flip.fastq.gz \
@@ -458,14 +432,11 @@ process bbduk {
     } else if (params.flip) {
         """
         echo ${name}
-
-
         reformat.sh -Xmx20g \
                 t=16 \
                 in=${name}.fastq.gz \
                 out=${name}.flip.fastq.gz \
                 rcomp=t
-
         
         bbduk.sh -Xmx20g \
                   t=16 \
@@ -483,7 +454,6 @@ process bbduk {
         else if (!params.singleEnd) {
         """
         echo ${name}      
-
         bbduk.sh -Xmx20g \
                   t=16 \
                   in=${name}_R1.fastq.gz \
@@ -501,7 +471,6 @@ process bbduk {
     } else {
         """
         echo ${name}
-
         bbduk.sh -Xmx20g \
                   t=16 \
                   in=${name}.fastq.gz \
@@ -566,7 +535,6 @@ process fastQC_trimmed {
     prefix = trimmed_reads.baseName
     """
     echo ${prefix}
-
     fastqc ${trimmed_reads}
     """
 }
@@ -656,7 +624,6 @@ process samtools {
     script:
     if (!params.singleEnd) {
     """
-
     samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
     samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
     samtools flagstat ${name}.sorted.bam > ${name}.flagstat
@@ -668,7 +635,6 @@ process samtools {
     """
     } else {
     """
-
     samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
     samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
     samtools flagstat ${name}.sorted.bam > ${name}.flagstat
@@ -713,7 +679,6 @@ process preseq {
     """
     preseq c_curve -B -o ${name}.c_curve.txt \
            ${bam_file}
-
     preseq lc_extrap -B -o ${name}.lc_extrap.txt \
            ${bam_file}
     """
@@ -762,10 +727,8 @@ process rseqc {
     read_distribution.py -i ${bam_file} \
                          -r ${genome_refseq} \
                          > ${name}.read_dist.txt
-
     read_duplication.py -i ${bam_file} \
                         -o ${name}.read_duplication
-
     infer_experiment.py -i ${bam_file} \
                         -r ${genome_refseq} \
                         > ${name}.infer_experiment.txt
@@ -795,7 +758,6 @@ process pileup {
 
     script:
     """
-
     pileup.sh -Xmx20g \
               in=${bam_file} \
               out=${name}.coverage.stats.txt \
@@ -830,56 +792,44 @@ process bedgraphs {
 
     script:
     """
-
     genomeCoverageBed \
                      -bg \
                      -strand + \
                      -g ${chrom_sizes} \
                      -ibam ${bam_file} \
                      > ${name}.pos.bedGraph
-
     genomeCoverageBed \
                      -bg \
                      -strand - \
                      -g ${chrom_sizes} \
                      -ibam ${bam_file} \
                      > ${name}.tmp.neg.bedGraph
-
      awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.bedGraph \
         > ${name}.neg.bedGraph
         rm ${name}.tmp.neg.bedGraph
-
     cat ${name}.pos.bedGraph \
         ${name}.neg.bedGraph \
         > ${name}.unsorted.bedGraph
-
     sortBed \
              -i ${name}.unsorted.bedGraph \
              > ${name}.bedGraph
-
     rm ${name}.unsorted.bedGraph
-
     python ${params.rcc} \
         ${name}.bedGraph \
         ${millions_mapped} \
         ${name}.rcc.bedGraph \
-
     python ${params.rcc} \
         ${name}.pos.bedGraph \
         ${millions_mapped} \
         ${name}.unsorted.pos.rcc.bedGraph
-
     sortBed -i ${name}.unsorted.pos.rcc.bedGraph > ${name}.pos.rcc.bedGraph
     rm ${name}.unsorted.pos.rcc.bedGraph
-
     python ${params.rcc} \
         ${name}.neg.bedGraph \
         ${millions_mapped} \
         ${name}.unsorted.neg.rcc.bedGraph
-
     sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
     rm ${name}.unsorted.neg.rcc.bedGraph
-
     """
  }
 
@@ -906,27 +856,20 @@ process dreg_prep {
 
     script:
     """
-
     echo "Creating BigWigs suitable as inputs to dREG"
-
     bedtools bamtobed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
     awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
     > ${name}.dreg.bed
     sortBed -i ${name}.dreg.bed > ${name}.dreg.sort.bed
-
     echo positive strand processed to bedGraph
-
     bedtools genomecov -bg -i ${name}.dreg.sort.bed -g ${chrom_sizes} -strand + > ${name}.pos.bedGraph
     sortBed -i ${name}.pos.bedGraph > ${name}.pos.sort.bedGraph
     bedtools genomecov -bg -i ${name}.dreg.sort.bed -g ${chrom_sizes} -strand - \
     | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' > ${name}.neg.bedGraph
     sortBed -i ${name}.neg.bedGraph > ${name}.neg.sort.bedGraph
-
     echo negative strand processed to bedGraph
-
     ${params.bedGraphToBigWig} ${name}.pos.sort.bedGraph ${chrom_sizes} ${name}.pos.bw
     ${params.bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
-
     echo bedGraph to bigwig done
     """
  }
@@ -956,7 +899,6 @@ process normalized_bigwigs {
     """
     ${params.bedGraphToBigWig} ${pos_bedgraph} ${chrom_sizes} ${name}.pos.rcc.bw
     ${params.bedGraphToBigWig} ${neg_bedgraph} ${chrom_sizes} ${name}.neg.rcc.bw
-
     """
 }
 
@@ -1069,17 +1011,14 @@ process FStitch {
         -b ${pos_bg} \
         -p ${name}.fstitch.hmminfo \
         -o ${name}.pos.fstitch_seg.bed
-
      ${fstitch_path} segment \
         -s - \
         -b ${neg_bg} \
         -p ${name}.fstitch.hmminfo \
         -o ${name}.neg.fstitch_seg.bed
-
     cat ${name}.pos.fstitch_seg.bed \
         ${name}.neg.fstitch_seg.bed \
         | sortBed > ${name}.fstitch_seg.bed
-
     bidir \
         -b ${name}.fstitch_seg.bed \
         -g ${genome_refseq} \
@@ -1232,6 +1171,7 @@ process multicov {
         """
         bedtools multicov \
             -bams ${count_bam} \
+            -s \
             -bed ${genome_refseq} \
             > ${name}_counts.bed
         """
