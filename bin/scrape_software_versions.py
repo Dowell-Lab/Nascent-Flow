@@ -11,6 +11,7 @@ regexes = {
     'Samtools': ['v_samtools.txt', r"samtools (\S+)"],
     'fasterq-dump': ['v_fasterq-dump.txt', r"fasterq-dump : (\S+)"],
     'RseQC': ['v_rseqc.txt', r"RSeQC version(\S+)"],
+    'MultiQC': ['v_multiqc.txt', r"MultiQC version(\S+)"],
     'Bedtools': ['v_bedtools.txt', r"bedtools v(\S+)"],
     'IGV Tools': ['v_igv-tools.txt', r"IGV Version (\S+)"],
     'BBduk': ['v_bbduk.txt', r"BBDuk Trimming version(\S+)"],

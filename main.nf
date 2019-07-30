@@ -272,6 +272,7 @@ try {
  */
 process get_software_versions {
     validExitStatus 0,1,127
+    time '1h'
     publishDir "${params.outdir}/software_versions/", mode: 'copy', pattern: '*.txt'
 
     output:
@@ -294,6 +295,7 @@ process get_software_versions {
     $tfit_path model --version > v_tfit.txt
     process_atac --version > v_dastk.txt
     infer_experiment.py --version > v_rseqc.txt
+    multiqc --version > v_multiqc.txt
     for X in `ls *.txt`; do
         cat \$X >> all_versions.txt;
     done
@@ -598,7 +600,7 @@ process hisat2 {
 
 process samtools {
     tag "$name"
-    memory '100 GB'
+    memory '40 GB'
     cpus 16
     publishDir "${params.outdir}" , mode: 'copy',
     saveAs: {filename ->
@@ -743,7 +745,7 @@ process rseqc {
 
 process pileup {
     tag "$name"
-    memory '50 GB'
+    memory '30 GB'
     publishDir "${params.outdir}/qc/pileup", mode: 'copy', pattern: "*.txt"
     
     when:
@@ -758,7 +760,7 @@ process pileup {
 
     script:
     """
-    pileup.sh -Xmx20g \
+    pileup.sh -Xmx30g \
               in=${bam_file} \
               out=${name}.coverage.stats.txt \
               hist=${name}.coverage.hist.txt
@@ -772,10 +774,9 @@ process pileup {
 process bedgraphs {
     validExitStatus 0,143
     tag "$name"
-    memory '80 GB'
+    memory '40 GB'
     time '4h'
     publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"
-    publishDir "${params.outdir}/mapped/rcc_bedgraphs", mode: 'copy', pattern: "${name}.rcc.bedGraph"
 
     input:
     set val(name), file(bam_file) from sorted_bams_for_bedtools_bedgraph
@@ -783,8 +784,8 @@ process bedgraphs {
     set val(name), file(millions_mapped) from bam_milmapped_bedgraph
 
     output:
-    set val(name), file("*pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
-    set val(name), file("*neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
+    set val(name), file("${name}.pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
+    set val(name), file("${name}.neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
     set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg
     set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
     set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
@@ -803,33 +804,32 @@ process bedgraphs {
                      -strand - \
                      -g ${chrom_sizes} \
                      -ibam ${bam_file} \
-                     > ${name}.tmp.neg.bedGraph
-     awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' ${name}.tmp.neg.bedGraph \
-        > ${name}.neg.bedGraph
-        rm ${name}.tmp.neg.bedGraph
+                     | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' > ${name}.neg.bedGraph
+
     cat ${name}.pos.bedGraph \
-        ${name}.neg.bedGraph \
-        > ${name}.unsorted.bedGraph
+                    ${name}.neg.bedGraph \
+                    > ${name}.unsorted.bedGraph
+        
     sortBed \
-             -i ${name}.unsorted.bedGraph \
-             > ${name}.bedGraph
-    rm ${name}.unsorted.bedGraph
+                     -i ${name}.unsorted.bedGraph \
+                     > ${name}.bedGraph
+
     python ${params.rcc} \
         ${name}.bedGraph \
         ${millions_mapped} \
-        ${name}.rcc.bedGraph \
+        ${name}.rcc.bedGraph
+        
     python ${params.rcc} \
         ${name}.pos.bedGraph \
         ${millions_mapped} \
         ${name}.unsorted.pos.rcc.bedGraph
     sortBed -i ${name}.unsorted.pos.rcc.bedGraph > ${name}.pos.rcc.bedGraph
-    rm ${name}.unsorted.pos.rcc.bedGraph
+
     python ${params.rcc} \
         ${name}.neg.bedGraph \
         ${millions_mapped} \
         ${name}.unsorted.neg.rcc.bedGraph
     sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
-    rm ${name}.unsorted.neg.rcc.bedGraph
     """
  }
 
@@ -857,17 +857,36 @@ process dreg_prep {
     script:
     """
     echo "Creating BigWigs suitable as inputs to dREG"
+    
     bedtools bamtobed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
     awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
     > ${name}.dreg.bed
     sortBed -i ${name}.dreg.bed > ${name}.dreg.sort.bed
+    
     echo positive strand processed to bedGraph
-    bedtools genomecov -bg -i ${name}.dreg.sort.bed -g ${chrom_sizes} -strand + > ${name}.pos.bedGraph
-    sortBed -i ${name}.pos.bedGraph > ${name}.pos.sort.bedGraph
-    bedtools genomecov -bg -i ${name}.dreg.sort.bed -g ${chrom_sizes} -strand - \
-    | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' > ${name}.neg.bedGraph
-    sortBed -i ${name}.neg.bedGraph > ${name}.neg.sort.bedGraph
+    
+    bedtools genomecov \
+            -bg \
+            -i ${name}.dreg.sort.bed \
+            -g ${chrom_sizes} \
+            -strand + \
+            > ${name}.pos.bedGraph
+    sortBed \
+            -i ${name}.pos.bedGraph \
+            > ${name}.pos.sort.bedGraph
+            
+    bedtools genomecov \
+            -bg \
+            -i ${name}.dreg.sort.bed \
+            -g ${chrom_sizes} \
+            -strand - \
+            | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' > ${name}.neg.bedGraph
+    sortBed \
+            -i ${name}.neg.bedGraph \
+            > ${name}.neg.sort.bedGraph
+            
     echo negative strand processed to bedGraph
+    
     ${params.bedGraphToBigWig} ${name}.pos.sort.bedGraph ${chrom_sizes} ${name}.pos.bw
     ${params.bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
     echo bedGraph to bigwig done
@@ -881,7 +900,7 @@ process dreg_prep {
 process normalized_bigwigs {
     validExitStatus 0
     tag "$name"
-    memory '30 GB'
+    memory '10 GB'
     publishDir "${params.outdir}/mapped/rcc_bigwig", mode: 'copy'
     
     when:
@@ -908,7 +927,7 @@ process normalized_bigwigs {
 
 process igvtools {
     tag "$name"
-    memory '200 GB'
+    memory '30 GB'
     time '1h'
     // This often blows up due to a ceiling in memory usage, so we can ignore
     // and re-run later as it's non-essential.
