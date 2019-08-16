@@ -59,6 +59,7 @@ This pipeline requires a number of optional python packages for qc and analysis.
 $ pip3 install MultiQC --user
 $ pip3 install RSeQC --user
 $ pip3 install FStitch-Bidir --user
+$ pip3 install DAStk --user
 ```
 
 Note that all packages are Python3.
