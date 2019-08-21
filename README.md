@@ -43,26 +43,28 @@ To see a full list of options and pipeline version, enter:
     
 ##### FStitch Requirements
 
-FStitch can now optionally be run to segment nascent data into active and inactive regions of transcription and annotate bidirectionals (see https://github.com/Dowell-Lab/FStitch). To run FStitch, you must specify additional parameters in your config file including `FS_path` and `FS_train` which are the full path to the FStitch executable (once compiled) and the training file, respectively. See `slurm.config` for example parameterization. This option can be executed in the pipeline through the `--fstitch` argument. Please note that the FStitch bidir module is in Python3 and must also be pip installed (see Python Package Requirements).
+FStitch can now optionally be run to segment nascent data into active and inactive regions of transcription and annotate bidirectionals (see https://github.com/Dowell-Lab/FStitch). To run FStitch, you must specify additional parameters in your config file including `FS_path` and `FS_train` which are the full path to the FStitch executable (once compiled) and the training file, respectively. See `slurm.config` for example parameterization. This option can be executed in the pipeline through the `--fstitch` argument. Please note that the FStitch `bidir` module is in Python3 and must also be pip installed (see Package Requirements).
 
 ##### Tfit Requirements
 
-Tfit is also now included in the pipeline and will model RNAPII activity using the `model` module (see https://github.com/Dowell-Lab/Tfit). Running Tfit in the pipeline requires that the user also runs FStitch as the `bidir` module will be used to gernerate regions of putitive activity to model. Only the default Tfit parameters are used, and there may be additional options that will help refine your data. This will typically take a long time to run (2-48hrs depending on dataset complexity) based on the default 16 thread usage allocation, so be sure to plan accordingly if you include this in the pipeline.
+Tfit is also now included in the pipeline and will model RNAPII activity using the `model` module (see https://github.com/Dowell-Lab/Tfit). Running the `--tfit` argument in the pipeline requires that the user also runs FStitch as the `bidir` module will be used to gernerate regions of putitive activity to model. Only the default Tfit parameters are used, and there may be additional options that will help refine your data. This will typically take a long time to run (2-48hrs depending on dataset complexity) based on the default 16 thread usage allocation, so be sure to plan accordingly if you include this in the pipeline. Alternatively, the user can specifiy `--prelimtfit` to use Tfit's internal template matching algorithm to generate preliminary regions to model and bypass the FStitch requirement. However, it is highly encouraged to use FStitch to generate the prelimary regions.
 
-##### Python Package Requirements
+##### Package Requirements (instructions included that are specific to Fiji users)
 
 ***IMPORTANT: For individual users, we highly recommend installing all python packages in a virtual environment***
 
-This pipeline requires a number of optional python packages for qc and analysis. To install RSeQC, MultiQC, and FStitch, you can run the following:
+This pipeline requires a number of optional python packages for QC and analysis not available to module load in Fiji. To install MultiQC, DAStk, and FStitch, you can run the following:
 
 ```
+$ pip3 install parallel-fastq-dump --user ### only required if --threadfqdump argument is specified
 $ pip3 install MultiQC --user
-$ pip3 install RSeQC --user
-$ pip3 install FStitch-Bidir --user
+$ pip3 install fstitch-annotate --user
 $ pip3 install DAStk --user
 ```
 
-Note that all packages are Python3.
+Note that all packages require Python3.
+
+Additional packages that are required and globally installed on Fiji are BEDTools (***v. 2.28.0 now required***), samtools (htslib, v. 1.8+ recommended), RSeQC, gcc (do not use 7.2.0!), sra tools, BBMap, IGVtools, HISAT2, fastqc, preseq, mpich (v 3.2.1 or higher), and python3.
 
 ##### Running Nextflow Using an sbatch script
 
@@ -89,8 +91,9 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 | --savefq   |               | Compresses and saves raw fastq reads.                     |
 | --saveTrim |               | Compresses and saves trimmed fastq reads.                 |
 | --saveAll  |               | Compresses and saves all fastq reads.                     |
-| --skipBAM  |               | Skips saving BAM files (only save CRAM). Default=False    |
+| --saveBAM  |               | Saves BAM files. By default, only CRAM will be saved.     |
 | --savebw   |               | Save normalized BigWig files for UCSC genome broswer.     |
+| --savebg   |               | Saves concatenated pos/neg bedGraph file.                 |
 
 **Input File Options**
 

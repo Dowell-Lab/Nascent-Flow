@@ -55,18 +55,23 @@ def helpMessage() {
          --sras                        Directory pattern for SRA files: /project/*.sras (Required if --fastqs not specified)
          --workdir                     Nextflow working directory where all intermediate files are saved.
          --email                       Where to send workflow report email.
+         
     Performance options:
         --threadfqdump                 Runs multi-threading for fastq-dump for sra processing.
+        
     Input File options:
         --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
         --flip                         Reverse complements each strand. Necessary for some library preps.
+        
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
         --savefq                       Saves compressed raw fastq reads.
         --saveTrim                     Saves compressed trimmed fastq reads.
-        --skipBAM                      Skip saving BAM files. Only CRAM files will be saved with this option.
+        --saveBAM                      Save BAM files. Only CRAM files will be saved with this option.
         --saveAll                      Saves all compressed fastq reads.
         --savebw                       Saves pos/neg bigwig files for UCSC genome browser.
+        --savebg                       Saves concatenated pos/neg bedGraph file.     
+        
     QC Options:
         --skipMultiQC                  Skip running MultiQC.
         --skipFastQC                   Skip running FastQC.
@@ -215,8 +220,9 @@ summary['Genome Ref']       = params.genome
 summary['Thread fqdump']    = params.threadfqdump ? 'YES' : 'NO'
 summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
-summary['Save BAM']         = params.skipBAM ? 'NO' : 'YES'
+summary['Save BAM']         = params.saveBAM ? 'YES' : 'NO'
 summary['Save BigWig']      = params.savebw ? 'YES' : 'NO'
+summary['Save bedGraph']    = params.savebg ? 'YES' : 'NO'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
@@ -604,8 +610,8 @@ process samtools {
     cpus 16
     publishDir "${params.outdir}" , mode: 'copy',
     saveAs: {filename ->
-             if ((filename.indexOf("sorted.bam") > 0) & !params.skipBAM)                                                                                                                             "mapped/bams/$filename"
-        else if ((filename.indexOf("sorted.bam.bai") > 0) & !params.skipBAM)                                                                                                                         "mapped/bams/$filename"
+             if ((filename.indexOf("sorted.bam") > 0) & params.saveBAM)                                                                                                                             "mapped/bams/$filename"
+        else if ((filename.indexOf("sorted.bam.bai") > 0) & params.saveBAM)                                                                                                                         "mapped/bams/$filename"
         else if (filename.indexOf("flagstat") > 0)                    "qc/mapstats/$filename"
         else if (filename.indexOf("millionsmapped") > 0)              "qc/mapstats/$filename"
         else if (filename.indexOf("sorted.cram") > 0)                 "mapped/crams/$filename"
@@ -620,8 +626,8 @@ process samtools {
     set val(name), file("${name}.sorted.bam.bai") into sorted_bam_indices_ch
     set val(name), file("${name}.flagstat") into bam_flagstat
     set val(name), file("${name}.millionsmapped") into bam_milmapped_bedgraph
-    set val(name), file("${name}.sorted.cram") into cram_out
-    set val(name), file("${name}.sorted.cram.crai") into cram_index_out
+    set val(name), file("${name}.sorted.cram") into cram_ch
+    set val(name), file("${name}.sorted.cram.crai") into cram_index_ch
 
     script:
     if (!params.singleEnd) {
@@ -650,10 +656,16 @@ process samtools {
 }
 
 sorted_bam_ch
-   .into {sorted_bams_for_bedtools_bedgraph; sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup; sorted_bams_for_counts}
+   .into {sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup}
 
 sorted_bam_indices_ch
-    .into {sorted_bam_indices_for_bedtools_bedgraph; sorted_bam_indices_for_bedtools_normalized_bedgraph; sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc; sorted_bam_indices_for_counts}
+    .into {sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc}
+
+cram_ch
+    .into {cram_for_bedgraph; cram_for_counts; cram_dreg_prep}
+
+cram_index_ch
+    .into {cram_index_for_bedgraph; cram_index_for_counts; cram_index_dreg_prep}
 
 /*
  *STEP 5a - Plot the estimated complexity of a sample, and estimate future yields
@@ -776,11 +788,13 @@ process bedgraphs {
     tag "$name"
     memory '40 GB'
     time '4h'
-    publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"
+    if (params.savebg) {
+            publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"
+    }      
 
     input:
-    set val(name), file(bam_file) from sorted_bams_for_bedtools_bedgraph
-    set val(name), file(bam_indices) from sorted_bam_indices_for_bedtools_bedgraph
+    set val(name), file(cram_file) from cram_for_bedgraph
+    set val(name), file(cram_indices) from cram_index_for_bedgraph
     set val(name), file(millions_mapped) from bam_milmapped_bedgraph
 
     output:
@@ -793,17 +807,19 @@ process bedgraphs {
 
     script:
     """
+    export CRAM_REFERENCE=${genome}
+    
     genomeCoverageBed \
                      -bg \
                      -strand + \
                      -g ${chrom_sizes} \
-                     -ibam ${bam_file} \
+                     -ibam ${cram_file} \
                      > ${name}.pos.bedGraph
     genomeCoverageBed \
                      -bg \
                      -strand - \
                      -g ${chrom_sizes} \
-                     -ibam ${bam_file} \
+                     -ibam ${cram_file} \
                      | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' > ${name}.neg.bedGraph
 
     cat ${name}.pos.bedGraph \
@@ -811,8 +827,8 @@ process bedgraphs {
                     > ${name}.unsorted.bedGraph
         
     sortBed \
-                     -i ${name}.unsorted.bedGraph \
-                     > ${name}.bedGraph
+                    -i ${name}.unsorted.bedGraph \
+                    > ${name}.bedGraph
 
     python ${params.rcc} \
         ${name}.bedGraph \
@@ -848,7 +864,8 @@ process dreg_prep {
     params.dreg
 
     input:
-    set val(name), file(bam_file) from sorted_bams_for_dreg_prep
+    set val(name), file(cram_file) from cram_dreg_prep
+    set val(name), file(cram_index) from cram_index_dreg_prep
     file(chrom_sizes) from chrom_sizes
 
     output:
@@ -858,7 +875,9 @@ process dreg_prep {
     """
     echo "Creating BigWigs suitable as inputs to dREG"
     
-    bedtools bamtobed -i ${bam_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
+    export CRAM_REFERENCE=${genome}    
+    
+    bamToBed -i ${cram_file} | awk 'BEGIN{OFS="\t"} (\$5 > 0){print \$0}' | \
     awk 'BEGIN{OFS="\t"} (\$6 == "+") {print \$1,\$2,\$2+1,\$4,\$5,\$6}; (\$6 == "-") {print \$1, \$3-1,\$3,\$4,\$5,\$6}' \
     > ${name}.dreg.bed
     sortBed -i ${name}.dreg.bed > ${name}.dreg.sort.bed
@@ -880,7 +899,7 @@ process dreg_prep {
             -i ${name}.dreg.sort.bed \
             -g ${chrom_sizes} \
             -strand - \
-            | awk 'BEGIN{OFS="\t"} {print \$1,\$2,\$3,-1*\$4}' > ${name}.neg.bedGraph
+            | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' > ${name}.neg.bedGraph
     sortBed \
             -i ${name}.neg.bedGraph \
             > ${name}.neg.sort.bedGraph
@@ -889,6 +908,7 @@ process dreg_prep {
     
     ${params.bedGraphToBigWig} ${name}.pos.sort.bedGraph ${chrom_sizes} ${name}.pos.bw
     ${params.bedGraphToBigWig} ${name}.neg.sort.bedGraph ${chrom_sizes} ${name}.neg.bw
+    
     echo bedGraph to bigwig done
     """
  }
@@ -1180,16 +1200,18 @@ process multicov {
     params.counts
     
     input:
-    set val(name), file (count_bam) from sorted_bams_for_counts
-    set val(name), file (bam_indices) from sorted_bam_indices_for_counts
+    set val(name), file (cram_count) from cram_for_counts
+    set val(name), file (cram_index) from cram_index_for_counts
        
     output:
     file ("*.bed") into counts_bed_out
         
     script:
         """
+        export CRAM_REFERENCE=${genome}
+        
         bedtools multicov \
-            -bams ${count_bam} \
+            -bams ${cram_count} \
             -s \
             -bed ${genome_refseq} \
             > ${name}_counts.bed
