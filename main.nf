@@ -570,32 +570,53 @@ process hisat2 {
 
     script:
     //prefix = trimmed_reads.baseName
-    if (!params.singleEnd) {
+    if (!params.singleEnd && !params.flip) {
         """
         echo ${name}
     
         hisat2  -p 32 \
                 --very-sensitive \
-                --no-spliced-alignment \
                 -x ${indices_path} \
-                -1 ${name}_R1.trim.fastq.gz \
-                -2 ${name}_R2.trim.fastq.gz \
+                --pen-noncansplice 14 \
+                --mp 1,0 \
+                --sp 3,1 \
+                -1 ${name}_1.trim.fastq.gz \
+                -2 ${name}_2.trim.fastq.gz \
                 --new-summary \
-                --summary-file ${name}.hisat2_summary.txt \
-                > ${name}.sam
+                > ${name}.sam \
+                2> ${name}.hisat2_mapstats.txt                
         """
-    } else {
+    }
+    if (!params.singleEnd && params.flip) {
+        """
+        echo ${name}
+        hisat2  -p 32 \
+                --very-sensitive \
+                -x ${indices_path} \
+                --pen-noncansplice 14 \
+                --mp 1,0 \
+                --sp 3,1 \
+                -1 ${name}_1.flip.trim.fastq.gz \
+                -2 ${name}_2.flip.trim.fastq.gz \
+                --new-summary \
+                > ${name}.sam \
+                2> ${name}.hisat2_mapstats.txt                
+        """
+    }
+    else {
         """
         echo ${name}
     
         hisat2  -p 32 \
                 --very-sensitive \
-                --no-spliced-alignment \
+                --pen-noncansplice 14 \
+                --mp 1,0 \
+                --sp 3,1 \
                 -x ${indices_path}\
                 -U ${trimmed_reads} \
                 --new-summary \
-                --summary-file ${name}.hisat2_summary.txt \
-                > ${name}.sam
+                > ${name}.sam \
+                2> ${name}.hisat2_mapstats.txt                
         """
     }
 }
@@ -789,7 +810,7 @@ process bedgraphs {
     memory '40 GB'
     time '4h'
     if (params.savebg) {
-            publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"
+            publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "*.bedGraph"
     }      
 
     input:
