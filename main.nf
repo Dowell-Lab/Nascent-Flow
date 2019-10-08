@@ -70,7 +70,6 @@ def helpMessage() {
         --saveBAM                      Save BAM files. Only CRAM files will be saved with this option.
         --saveAll                      Saves all compressed fastq reads.
         --savebw                       Saves pos/neg bigwig files for UCSC genome browser.
-        --savebg                       Saves concatenated pos/neg bedGraph file.     
         
     QC Options:
         --skipMultiQC                  Skip running MultiQC.
@@ -79,6 +78,7 @@ def helpMessage() {
         --skippreseq                   Skip running preseq.
         --skippileup                   Skip running pileup.sh.
         --skipAllQC                    Skip running all QC.
+        --nqc                          Run Nascent QC.
         
     Analysis Options:
         --counts                       Run BEDTools mutlicov for each sample to obtain gene counts over the RefSeq annotation.
@@ -109,6 +109,7 @@ params.plaintext_email = false
 params.bbmap_adapters = "$baseDir/bin/adapters.fa"
 params.bedGraphToBigWig = "$baseDir/bin/bedGraphToBigWig"
 params.rcc = "$baseDir/bin/rcc.py"
+params.nqc_py = "$baseDir/bin/nqc.py"
 params.merge_counts = "$baseDir/bin/merge_counts.py"
 params.workdir = "./nextflowTemp"
 multiqc_config = file(params.multiqc_config)
@@ -178,18 +179,21 @@ if (params.fastqs) {
         fastq_reads_trim = Channel
                             .fromPath(params.fastqs)
                             .map { file -> tuple(file.simpleName, file) }
+        fastq_reads_subsample = Channel
+                            .fromPath(params.fastqs)
+                            .map { file -> tuple(file.simpleName, file) }        
     } else {
         Channel
             .fromFilePairs( params.fastqs, size: params.singleEnd ? 1 : 2 )
             .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
-            .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip }
+            .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip; fastq_reads_subsample }
     }
 }
 
 else {
     Channel
         .empty()
-        .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip }
+        .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip; fastq_reads_subsample }
 }
 
 if (params.sras) {
@@ -227,6 +231,7 @@ summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
 summary['Run Multicov']     = params.counts ? 'YES' : 'NO'
+summary['Nascent QC']       = params.nqc ? 'YES' : 'NO'
 summary['Run FastQC']       = params.skipFastQC ? 'NO' : 'YES'
 summary['Run preseq']       = params.skippreseq ? 'NO' : 'YES'
 summary['Run pileup']       = params.skippileup ? 'NO' : 'YES'
@@ -271,7 +276,6 @@ try {
               "  Please run `nextflow self-update` to update Nextflow.\n" +
               "============================================================"
 }
-
 
 /*
  * Parse software version numbers
@@ -328,7 +332,7 @@ process sra_dump {
     set val(prefix), file(reads) from read_files_sra
 
     output:
-    set val(prefix), file("*.fastq.gz") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_gzip_sra
+    set val(prefix), file("*.fastq.gz") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_sra_subsample
    
 
     script:
@@ -363,6 +367,64 @@ process sra_dump {
     }
 }
 
+num = Channel.from( '001', '002', '003', '004', '005', '006', '007', '008', '009', '01', '02', '03', '04', '05', '06', '07', '08', '09', '1', '2', '3', '4', '5', '6', '7', '8', '9' )
+//num = Channel.from( 1, 2, 3, 4, 5, 6, 7, 8, 9 )
+
+/*
+ * STEP 1c - Subsample
+ */
+
+process subsample {
+    validExitStatus 0,1
+    tag "$prefix"
+    memory '8 GB'
+    cpus 8
+    publishDir "${params.outdir}" , mode: 'copy',
+    saveAs: {filename ->
+             if ((filename.indexOf("zip") > 0) & (!params.skipFastQC || !params.skipAllQC))  "qc/fastqc/zips/$filename"
+        else if ((filename.indexOf("html") > 0) & (!params.skipFastQC || !params.skipAllQC)) "qc/fastqc/$filename"
+        else if ((filename.indexOf("fastq.gz") > 0) & (params.savefq || params.saveAllfq))   "fastq/$filename"
+    }
+    
+    when:
+    params.nqc
+
+    input:
+    set val(prefix), file(reads) from fastq_reads_sra_subsample.mix(fastq_reads_subsample)
+    each x from num
+
+    output:
+    file "*.fastq.gz" into fastq_reads_trim_subsample, fastq_reads_qc_subsample
+    file "*.{zip,html}" into fastqc_results_subsample    
+
+    script:
+    if (!params.skipFastQC || !params.skipAllQC){
+    """
+    echo ${x}
+    
+    seqkit sample \
+        ${reads} \
+        -p .${x} \
+        -j 8 \
+        -o ${prefix}_${x}.fastq.gz
+        
+    fastqc ${prefix}_${x}.fastq.gz \
+        -t 8
+    """
+        }
+    else {
+    """
+    echo ${x}
+    
+    seqkit sample \
+        ${reads} \
+        -p .${x} \
+        -j 8 \
+        -o ${prefix}_${x}.fastq.gz
+    """        
+    }
+}
+
 /*
  * STEP 1b - FastQC
  */
@@ -390,6 +452,8 @@ process fastQC {
     """
 }
 
+
+
 /*
  * STEP 2a - Trimming
  */
@@ -409,10 +473,10 @@ process bbduk {
     set val(name), file(reads) from fastq_reads_trim.mix(fastq_reads_trim_sra)
 
     output:
-    set val(name), file ("*.trim.fastq.gz") into trimmed_reads_fastqc, trimmed_reads_hisat2
+    set val(reads.simpleName), file("*.trim.fastq.gz") into trimmed_reads_fastqc, trimmed_reads_hisat2
     file "*.txt" into trim_stats
 
-    script:
+    script:  
     if (!params.singleEnd && params.flip) {
         """
         echo ${name}
@@ -491,31 +555,111 @@ process bbduk {
                   stats=${name}.trimstats.txt \
                   refstats=${name}.refstats.txt
         """
+    } 
+}
+
+/*
+ * STEP 2a - Trimming Subsample
+ */
+
+process bbduk_sub {
+    validExitStatus 0,1
+    tag "$reads"
+    cpus 16
+    time '2h'
+    memory '20 GB'
+    publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.txt"
+    if (params.saveTrim || params.saveAllfq) {
+        publishDir "${params.outdir}/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
+    }    
+
+    input:
+    file(reads) from fastq_reads_trim_subsample.flatten()
+
+    output:
+    set val(reads.simpleName), file("*.trim.fastq.gz") into trimmed_reads_fastqc_subsample, trimmed_reads_hisat2_subsample
+    file "*.txt" into trim_stats_subsample
+
+    script:  
+    if (!params.singleEnd && params.flip) {
+        """
+        echo ${reads.simpleName}
+        reformat.sh -Xmx20g \
+                t=16 \
+                in=${reads.simpleName}_R1.fastq.gz \
+                in2=${reads.simpleName}_R2.fastq.gz \
+                out=${reads.simpleName}_R1.flip.fastq.gz \
+                out2=${reads.simpleName}_R2.flip.fastq.gz \
+                rcomp=t        
+        bbduk.sh -Xmx20g \
+                  t=16 \
+                  in=${reads.simpleName}_R1.flip.fastq.gz \
+                  in2=${reads.simpleName}_R2.flip.fastq.gz \
+                  out=${reads.simpleName}_R1.flip.trim.fastq.gz \
+                  out2=${reads.simpleName}_R2.flip.trim.fastq.gz \
+                  ref=${bbmap_adapters} \
+                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  maq=10 minlen=25 \
+                  tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                  stats=${reads.simpleName}.trimstats.txt \
+                  refstats=${reads.simpleName}.refstats.txt
+        """
+    } else if (params.flip) {
+        """
+        echo ${reads.simpleName}
+        reformat.sh -Xmx20g \
+                t=16 \
+                in=${reads.simpleName}.fastq.gz \
+                out=${reads.simpleName}.flip.fastq.gz \
+                rcomp=t
+        
+        bbduk.sh -Xmx20g \
+                  t=16 \
+                  in=${reads.simpleName}.flip.fastq.gz \
+                  out=${reads.simpleName}.flip.trim.fastq.gz \
+                  ref=${bbmap_adapters} \
+                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  maq=10 minlen=25 \
+                  tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                  stats=${reads.simpleName}.trimstats.txt \
+                  refstats=${reads.simpleName}.refstats.txt
+        """
     }
-    
-//    } else {
-//        """
-//        echo ${name}
-//        
-//        reformat.sh -Xmx20g \
-//                    t=16 \
-//                    -da ibq fixjunk=t \
-//                    in=${name}.fastq.gz \
-//                    out=${name}.quality_adjusted.fastq.gz
-//        
-//        bbduk.sh -Xmx20g \
-//                  t=16 \
-//                  in=${name}.quality_adjusted.fastq.gz \
-//                  out=${name}.trim.fastq.gz \
-//                  ref=${bbmap_adapters} \
-//                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-//                  maq=10 minlen=25 \
-//                  tpe tbo \
-//                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-//                  stats=${name}.trimstats.txt \
-//                  refstats=${name}.refstats.txt
-//        """
-//    }    
+        else if (!params.singleEnd) {
+        """
+        echo ${reads.simpleName}      
+        bbduk.sh -Xmx20g \
+                  t=16 \
+                  in=${reads.simpleName}_R1.fastq.gz \
+                  in2=${reads.simpleName}_R2.fastq.gz \
+                  out=${reads.simpleName}_R1.trim.fastq.gz \
+                  out2=${reads.simpleName}_R2.trim.fastq.gz \
+                  ref=${bbmap_adapters} \
+                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  maq=10 minlen=25 \
+                  tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                  stats=${reads.simpleName}.trimstats.txt \
+                  refstats=${reads.simpleName}.refstats.txt
+        """
+    } else {
+        """
+        echo ${reads.simpleName}
+        bbduk.sh -Xmx20g \
+                  t=16 \
+                  in=${reads.simpleName}.fastq.gz \
+                  out=${reads.simpleName}.trim.fastq.gz \
+                  ref=${bbmap_adapters} \
+                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  maq=10 minlen=25 \
+                  tpe tbo \
+                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                  stats=${reads.simpleName}.trimstats.txt \
+                  refstats=${reads.simpleName}.refstats.txt
+        """
+    } 
 }
 
 
@@ -525,7 +669,7 @@ process bbduk {
 
 process fastQC_trimmed {
     validExitStatus 0,1
-    tag "$prefix"
+    tag "$name"
     memory '4 GB'
     publishDir "${params.outdir}/qc/fastqc/", mode: 'copy',
         saveAs: {filename -> filename.indexOf(".zip") > 0 ? "zips/$filename" : "$filename"}
@@ -534,7 +678,7 @@ process fastQC_trimmed {
     !params.skipFastQC && !params.skipAllQC    
 
     input:
-    set val(prefix), file(trimmed_reads) from trimmed_reads_fastqc
+    set val(name), file(trimmed_reads) from trimmed_reads_fastqc.mix(trimmed_reads_fastqc_subsample)
 
     output:
     file "*_fastqc.{zip,html,txt}" into trimmed_fastqc_results
@@ -542,7 +686,7 @@ process fastQC_trimmed {
     script:
     prefix = trimmed_reads.baseName
     """
-    echo ${prefix}
+    echo ${trimmed_reads.simpleName}
     fastqc ${trimmed_reads}
     """
 }
@@ -562,7 +706,7 @@ process hisat2 {
     input:
     file(indices) from hisat2_indices
     val(indices_path) from hisat2_indices
-    set val(name), file(trimmed_reads) from trimmed_reads_hisat2
+    set val(name), file(trimmed_reads) from trimmed_reads_hisat2.mix(trimmed_reads_hisat2_subsample)
 
     output:
     set val(name), file("*.sam") into hisat2_sam
@@ -577,9 +721,6 @@ process hisat2 {
         hisat2  -p 32 \
                 --very-sensitive \
                 -x ${indices_path} \
-                --pen-noncansplice 14 \
-                --mp 1,0 \
-                --sp 3,1 \
                 -1 ${name}_1.trim.fastq.gz \
                 -2 ${name}_2.trim.fastq.gz \
                 --new-summary \
@@ -593,9 +734,6 @@ process hisat2 {
         hisat2  -p 32 \
                 --very-sensitive \
                 -x ${indices_path} \
-                --pen-noncansplice 14 \
-                --mp 1,0 \
-                --sp 3,1 \
                 -1 ${name}_1.flip.trim.fastq.gz \
                 -2 ${name}_2.flip.trim.fastq.gz \
                 --new-summary \
@@ -609,9 +747,6 @@ process hisat2 {
     
         hisat2  -p 32 \
                 --very-sensitive \
-                --pen-noncansplice 14 \
-                --mp 1,0 \
-                --sp 3,1 \
                 -x ${indices_path}\
                 -U ${trimmed_reads} \
                 --new-summary \
@@ -631,12 +766,12 @@ process samtools {
     cpus 16
     publishDir "${params.outdir}" , mode: 'copy',
     saveAs: {filename ->
-             if ((filename.indexOf("sorted.bam") > 0) & params.saveBAM)                                                                                                                             "mapped/bams/$filename"
-        else if ((filename.indexOf("sorted.bam.bai") > 0) & params.saveBAM)                                                                                                                         "mapped/bams/$filename"
-        else if (filename.indexOf("flagstat") > 0)                    "qc/mapstats/$filename"
-        else if (filename.indexOf("millionsmapped") > 0)              "qc/mapstats/$filename"
-        else if (filename.indexOf("sorted.cram") > 0)                 "mapped/crams/$filename"
-        else if (filename.indexOf("sorted.cram.crai") > 0)            "mapped/crams/$filename"
+             if ((filename.indexOf("sorted.bam") > 0) & params.saveBAM)     "mapped/bams/$filename"
+        else if ((filename.indexOf("sorted.bam.bai") > 0) & params.saveBAM) "mapped/bams/$filename"
+        else if (filename.indexOf("flagstat") > 0)                          "qc/mapstats/$filename"
+        else if (filename.indexOf("millionsmapped") > 0)                    "qc/mapstats/$filename"
+        else if (filename.indexOf("sorted.cram") > 0)                       "mapped/crams/$filename"
+        else if (filename.indexOf("sorted.cram.crai") > 0)                  "mapped/crams/$filename"
     }
 
     input:
@@ -809,9 +944,7 @@ process bedgraphs {
     tag "$name"
     memory '40 GB'
     time '4h'
-    if (params.savebg) {
-            publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "*.bedGraph"
-    }      
+    publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"      
 
     input:
     set val(name), file(cram_file) from cram_for_bedgraph
@@ -821,7 +954,7 @@ process bedgraphs {
     output:
     set val(name), file("${name}.pos.bedGraph") into pos_non_normalized_bedgraphs, pos_fstitch_bg
     set val(name), file("${name}.neg.bedGraph") into neg_non_normalized_bedgraphs, neg_fstitch_bg
-    set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg
+    set val(name), file("${name}.bedGraph") into non_normalized_bedgraphs, fstitch_bg, tfit_bg, prelimtfit_bg, nqc_bg
     set val(name), file("${name}.rcc.bedGraph") into bedgraph_tdf
     set val(name), file("${name}.pos.rcc.bedGraph") into bedgraph_bigwig_pos
     set val(name), file("${name}.neg.rcc.bedGraph") into bedgraph_bigwig_neg
@@ -1005,8 +1138,10 @@ process multiQC {
     input:
     file multiqc_config
     file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
-    file ('qc/fastqc/*') from trimmed_fastqc_results.collect()
-    file ('qc/trimstats/*') from trim_stats.collect()
+    file ('qc/fastqc/*') from (trimmed_fastqc_results).collect()
+    file ('qc/fastqc/*') from (fastq_reads_qc_subsample).collect()    
+    file ('qc/trimstats/*') from (trim_stats).collect()
+    file ('qc/trimstats/*') from (trim_stats_subsample).collect()    
     file ('qc/mapstats/*') from bam_flagstat.collect()
     file ('qc/rseqc/*') from rseqc_results.collect()
     file ('qc/preseq/*') from preseq_results.collect()
@@ -1231,10 +1366,10 @@ process multicov {
         """
         export CRAM_REFERENCE=${genome}
         
-        bedtools multicov \
-            -bams ${cram_count} \
-            -s \
-            -bed ${genome_refseq} \
+        bedtools multicov \\
+            -bams ${cram_count} \\
+            -s \\
+            -bed ${genome_refseq} \\
             > ${name}_counts.bed
         """
 }
@@ -1244,7 +1379,6 @@ process multicov {
  */
 
 process merge_multicov {
-    tag "$name"
     memory '10 GB'
     time '1h'
     validExitStatus 0
@@ -1261,12 +1395,40 @@ process merge_multicov {
         
     script:
         """
-        python3 ${params.merge_counts} \
-            -b './counts/' \
-            -o merged_counts.bed \
+        python3 ${params.merge_counts} \\
+            -b './counts/' \\
+            -o merged_counts.bed
         """
 }
 
+/*
+ * STEP 15 - Nascent QC
+ */
+
+process nqc {
+    memory '20 GB'
+    time '2h'
+    cpus 16    
+    validExitStatus 0
+    publishDir "${params.outdir}/qc/nqc", mode: 'copy', pattern: "*.txt"
+    
+    when:
+    params.nqc
+    
+    input:
+    file (bedgraphs:'mapped/bedgraphs/*') from nqc_bg.collect()
+       
+    output:
+    file ("*txt") into nqc_out
+        
+    script:
+        """
+        python3 ${params.nqc_py} \\
+            -b './mapped/bedgraphs/' \\
+            -g ${chrom_sizes} \\
+            -t 16
+        """
+}
 
 /*
  * STEP 12 - Output Description HTML
