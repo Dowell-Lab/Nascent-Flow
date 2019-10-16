@@ -9,10 +9,10 @@ def calmp(num_of_reads, total_reads):
 
 def gettotalreadsfromflagstat(flagstatfile):
 	f = open(flagstatfile)
-        lines = f.readlines()
-        mapped_reads = lines[0]
+	lines = f.readlines()
+	mapped_reads = lines[0]
 #        mapped_reads = int(x[0])
-	print "mapped_reads", mapped_reads
+	print("mapped_reads: %s" % mapped_reads)
 	return mapped_reads
 
 

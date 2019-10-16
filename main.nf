@@ -75,6 +75,7 @@ def helpMessage() {
         --skipMultiQC                  Skip running MultiQC.
         --skipFastQC                   Skip running FastQC.
         --skipRSeQC                    Skip running RSeQC.
+        --skippicard                   Skip running picard.        
         --skippreseq                   Skip running preseq.
         --skippileup                   Skip running pileup.sh.
         --skipAllQC                    Skip running all QC.
@@ -114,6 +115,7 @@ params.merge_counts = "$baseDir/bin/merge_counts.py"
 params.workdir = "./nextflowTemp"
 multiqc_config = file(params.multiqc_config)
 output_docs = file("$baseDir/docs/output.md")
+params.picard_path = "/Users/magr0763/picard/build/libs/picard.jar"
 
 // Validate inputs
 
@@ -368,7 +370,6 @@ process sra_dump {
 }
 
 num = Channel.from( '001', '002', '003', '004', '005', '006', '007', '008', '009', '01', '02', '03', '04', '05', '06', '07', '08', '09', '1', '2', '3', '4', '5', '6', '7', '8', '9' )
-//num = Channel.from( 1, 2, 3, 4, 5, 6, 7, 8, 9 )
 
 /*
  * STEP 1c - Subsample
@@ -464,7 +465,8 @@ process bbduk {
     cpus 16
     time '2h'
     memory '20 GB'
-    publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.{refstats,trimstats}.txt"
+    publishDir "${params.outdir}/qc/uniquestats", mode: 'copy', pattern: "*.uniquestats.txt"    
     if (params.saveTrim || params.saveAllfq) {
         publishDir "${params.outdir}/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
     }    
@@ -474,19 +476,30 @@ process bbduk {
 
     output:
     set val(reads.simpleName), file("*.trim.fastq.gz") into trimmed_reads_fastqc, trimmed_reads_hisat2
-    file "*.txt" into trim_stats
+    file "*.{refstats,trimstats}.txt" into trim_stats
+    file "*.uniquestats.txt" into unique_stats
 
     script:  
     if (!params.singleEnd && params.flip) {
         """
-        echo ${name}
+        echo ${name}        
+        bbcountunique.sh -Xmx20g \
+               t=16 \
+               in=${name}_R1.fastq.gz \
+               in2=${name}_R2.fastq.gz \
+               percent=t \
+               count=t \
+               cumulative=t \
+               out=${name}.uniquestats.txt
+               
         reformat.sh -Xmx20g \
                 t=16 \
                 in=${name}_R1.fastq.gz \
                 in2=${name}_R2.fastq.gz \
                 out=${name}_R1.flip.fastq.gz \
                 out2=${name}_R2.flip.fastq.gz \
-                rcomp=t        
+                rcomp=t
+                
         bbduk.sh -Xmx20g \
                   t=16 \
                   in=${name}_R1.flip.fastq.gz \
@@ -503,7 +516,15 @@ process bbduk {
         """
     } else if (params.flip) {
         """
-        echo ${name}
+        echo ${name}        
+        bbcountunique.sh -Xmx20g \
+               t=16 \
+               in=${name}.fastq.gz \
+               percent=t \
+               count=t \
+               cumulative=t \
+               out=${name}.uniquestats.txt
+        
         reformat.sh -Xmx20g \
                 t=16 \
                 in=${name}.fastq.gz \
@@ -525,7 +546,17 @@ process bbduk {
     }
         else if (!params.singleEnd) {
         """
-        echo ${name}      
+        echo ${name}
+       
+        bbcountunique.sh -Xmx20g \
+               t=16 \
+               in=${name}_R1.fastq.gz \
+               in2=${name}_R2.fastq.gz \
+               percent=t \
+               count=t \
+               cumulative=t \
+               out=${name}.uniquestats.txt
+               
         bbduk.sh -Xmx20g \
                   t=16 \
                   in=${name}_R1.fastq.gz \
@@ -543,6 +574,15 @@ process bbduk {
     } else {
         """
         echo ${name}
+        
+        bbcountunique.sh -Xmx20g \
+               in=${name}.fastq.gz \
+               t=16 \
+               percent=t \
+               count=t \
+               cumulative=t \
+               out=${name}.uniquestats.txt
+               
         bbduk.sh -Xmx20g \
                   t=16 \
                   in=${name}.fastq.gz \
@@ -568,7 +608,8 @@ process bbduk_sub {
     cpus 16
     time '2h'
     memory '20 GB'
-    publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.{refstats,trimstats}.txt"
+    publishDir "${params.outdir}/qc/uniquestats", mode: 'copy', pattern: "*.uniquestats.txt"
     if (params.saveTrim || params.saveAllfq) {
         publishDir "${params.outdir}/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
     }    
@@ -578,12 +619,22 @@ process bbduk_sub {
 
     output:
     set val(reads.simpleName), file("*.trim.fastq.gz") into trimmed_reads_fastqc_subsample, trimmed_reads_hisat2_subsample
-    file "*.txt" into trim_stats_subsample
+    file "*.{refstats,trimstats}.txt" into trim_stats_subsample
+    file "*.uniquestats.txt" into unique_stats_subsample
 
     script:  
     if (!params.singleEnd && params.flip) {
         """
-        echo ${reads.simpleName}
+        echo ${reads.simpleName}       
+        bbcountunique.sh -Xmx20g \
+               t=16 \
+               in=${reads.simpleName}_R1.fastq.gz \
+               in2=${reads.simpleName}_R2.fastq.gz \
+               percent=t \
+               count=t \
+               cumulative=t \
+               out=${reads.simpleName}.uniquestats.txt
+               
         reformat.sh -Xmx20g \
                 t=16 \
                 in=${reads.simpleName}_R1.fastq.gz \
@@ -608,6 +659,14 @@ process bbduk_sub {
     } else if (params.flip) {
         """
         echo ${reads.simpleName}
+        bbcountunique.sh -Xmx20g \
+               t=16 \
+               in=${reads.simpleName}.fastq.gz \
+               percent=t \
+               count=t \
+               cumulative=t \
+               out=${reads.simpleName}.uniquestats.txt
+               
         reformat.sh -Xmx20g \
                 t=16 \
                 in=${reads.simpleName}.fastq.gz \
@@ -629,7 +688,17 @@ process bbduk_sub {
     }
         else if (!params.singleEnd) {
         """
-        echo ${reads.simpleName}      
+        echo ${reads.simpleName}
+        
+        bbcountunique.sh -Xmx20g \
+               t=16 \
+               in=${reads.simpleName}_R1.fastq.gz \
+               in2=${reads.simpleName}_R2.fastq.gz \
+               percent=t \
+               count=t \
+               cumulative=t \
+               out=${reads.simpleName}.uniquestats.txt
+               
         bbduk.sh -Xmx20g \
                   t=16 \
                   in=${reads.simpleName}_R1.fastq.gz \
@@ -647,6 +716,15 @@ process bbduk_sub {
     } else {
         """
         echo ${reads.simpleName}
+
+        bbcountunique.sh -Xmx20g \
+               t=16 \
+               in=${reads.simpleName}.fastq.gz \
+               percent=t \
+               count=t \
+               cumulative=t \
+               out=${reads.simpleName}.uniquestats.txt
+               
         bbduk.sh -Xmx20g \
                   t=16 \
                   in=${reads.simpleName}.fastq.gz \
@@ -812,16 +890,54 @@ process samtools {
 }
 
 sorted_bam_ch
-   .into {sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup}
+   .into {sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup; sorted_bams_for_picard}
 
 sorted_bam_indices_ch
-    .into {sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc}
+    .into {sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc; sorted_bam_indices_for_picard}
 
 cram_ch
     .into {cram_for_bedgraph; cram_for_counts; cram_dreg_prep}
 
 cram_index_ch
     .into {cram_index_for_bedgraph; cram_index_for_counts; cram_index_dreg_prep}
+
+/*
+ *STEP 5a - Picard tools
+ */
+
+process picard {
+    tag "$name"
+    memory '20 GB'
+    time '8h'
+    errorStrategy 'ignore'
+    publishDir "${params.outdir}/qc/picard/", mode: 'copy', pattern: "*.{pdf,txt}"
+    
+    when:
+    !params.skippicard && !params.skipAllQC    
+
+    input:
+    set val(name), file(bam_file) from sorted_bams_for_picard
+    file(bam_indices) from sorted_bam_indices_for_picard
+
+    output:
+    file("*.{summary_metrics,gc_bias_metrics}.*") into picard_stats_gc
+    set val(name), file("*.marked_dup_metrics.txt") into picard_stats_dups_multiqc, picard_stats_dups_nqc
+
+    script:
+    """
+    java -jar -Xmx20g ${params.picard_path} MarkDuplicates \
+         I=${bam_file} \
+         O=${name}.marked_duplicates.bam \
+         M=${name}.marked_dup_metrics.txt             
+         
+    java -jar -Xmx20g ${params.picard_path} CollectGcBiasMetrics \
+          I=${bam_file} \
+          O=${name}.gc_bias_metrics.txt \
+          CHART=${name}.gc_bias_metrics.pdf \
+          S=${name}.summary_metrics.txt \
+          R=${genome}    
+    """
+ }
 
 /*
  *STEP 5a - Plot the estimated complexity of a sample, and estimate future yields
@@ -913,7 +1029,7 @@ process rseqc {
 
 process pileup {
     tag "$name"
-    memory '30 GB'
+    memory '40 GB'
     publishDir "${params.outdir}/qc/pileup", mode: 'copy', pattern: "*.txt"
     
     when:
@@ -928,7 +1044,7 @@ process pileup {
 
     script:
     """
-    pileup.sh -Xmx30g \
+    pileup.sh -Xmx40g \
               in=${bam_file} \
               out=${name}.coverage.stats.txt \
               hist=${name}.coverage.hist.txt
@@ -1147,6 +1263,10 @@ process multiQC {
     file ('qc/preseq/*') from preseq_results.collect()
     file ('software_versions/*') from software_versions_yaml
     file ('qc/hisat2_mapstats/*') from hisat2_mapstats.collect()
+    file ('qc/picard/*') from picard_stats_gc.collect()
+    file ('qc/picard/*') from picard_stats_dups_multiqc.collect()    
+    file ('qc/uniquestats/*') from unique_stats_subsample.collect()
+    file ('qc/uniquestats/*') from unique_stats.collect()    
 
     output:
     file "*multiqc_report.html" into multiqc_report
@@ -1410,21 +1530,23 @@ process nqc {
     time '2h'
     cpus 16    
     validExitStatus 0
-    publishDir "${params.outdir}/qc/nqc", mode: 'copy', pattern: "*.txt"
+    publishDir "${params.outdir}/qc/nqc", mode: 'copy', pattern: "*.{txt,html,png}"
     
     when:
     params.nqc
     
     input:
     file (bedgraphs:'mapped/bedgraphs/*') from nqc_bg.collect()
+    file (duplication_files:'qc/picard/*') from picard_stats_dups_nqc.collect()  
        
     output:
-    file ("*txt") into nqc_out
+    file ("*.{txt,html,png}") into nqc_out
         
     script:
         """
         python3 ${params.nqc_py} \\
             -b './mapped/bedgraphs/' \\
+            -d './qc/picard/' \\
             -g ${chrom_sizes} \\
             -t 16
         """
