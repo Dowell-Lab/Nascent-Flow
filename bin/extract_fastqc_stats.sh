@@ -40,14 +40,14 @@ while [ "$1" != "" ]; do
 		esac
 		shift
 done
-echo Extracting fastqc statistics for "$SRR"
+#echo \#Extracting fastqc statistics for "$SRR"
 
-GC=$(unzip -c "$(find . -name *_fastqc.zip)" "$SRR"_fastqc/fastqc_data.txt \
+GC=$(unzip -c "$(find . -maxdepth 1 -name "*_fastqc.zip")" "$SRR"_fastqc/fastqc_data.txt \
          | grep "%GC" | grep -o "[0-9]*")
-SEQ=$(unzip -c "$(find . -name *_fastqc.zip)" "$SRR"_fastqc/fastqc_data.txt | \
+SEQ=$(unzip -c "$(find . -maxdepth 1 -name "*_fastqc.zip")" "$SRR"_fastqc/fastqc_data.txt | \
           grep "Total Sequences" | \
           grep -o "[0-9]*")
-DEDUP=$(unzip -c "$(find . -name *_fastqc.zip)" "$SRR"_fastqc/fastqc_data.txt | \
+DEDUP=$(unzip -c "$(find . -maxdepth 1 -name "*_fastqc.zip")" "$SRR"_fastqc/fastqc_data.txt | \
             grep "#Total Deduplicated Percentage" | \
             grep -o "[0-9,.]*")
 

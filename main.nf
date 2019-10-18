@@ -577,9 +577,7 @@ process hisat2 {
         hisat2  -p 32 \
                 --very-sensitive \
                 -x ${indices_path} \
-                --pen-noncansplice 14 \
-                --mp 1,0 \
-                --sp 3,1 \
+                --no-spliced-alignment \
                 -1 ${name}_1.trim.fastq.gz \
                 -2 ${name}_2.trim.fastq.gz \
                 --new-summary \
@@ -593,9 +591,7 @@ process hisat2 {
         hisat2  -p 32 \
                 --very-sensitive \
                 -x ${indices_path} \
-                --pen-noncansplice 14 \
-                --mp 1,0 \
-                --sp 3,1 \
+                --no-spliced-alignment \
                 -1 ${name}_1.flip.trim.fastq.gz \
                 -2 ${name}_2.flip.trim.fastq.gz \
                 --new-summary \
@@ -609,9 +605,7 @@ process hisat2 {
     
         hisat2  -p 32 \
                 --very-sensitive \
-                --pen-noncansplice 14 \
-                --mp 1,0 \
-                --sp 3,1 \
+                --no-spliced-alignment \
                 -x ${indices_path}\
                 -U ${trimmed_reads} \
                 --new-summary \
