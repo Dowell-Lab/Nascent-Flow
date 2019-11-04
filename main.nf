@@ -430,7 +430,7 @@ process bbduk_hisat2 {
     set val(name), file(reads) from fastq_reads_trim.mix(fastq_reads_trim_sra)
 
     output:
-    file "*.trim.fastq.gz" into trimmed_reads_fastqc
+    set val(name), file("*.trim.fastq.gz") into trimmed_reads_fastqc
     file "*.{refstats,trimstats}.txt" into trim_stats
     set val(name), file("*.sam") into hisat2_sam
     file("*hisat2_mapstats.txt") into hisat2_mapstats       
@@ -563,29 +563,29 @@ process bbduk_hisat2 {
  * STEP 2b - Trimmed FastQC
  */
 
-process fastQC_trimmed {
+process fastQC_trim {
     validExitStatus 0,1
-    tag "$prefix"
+    tag "$name"
     memory '4 GB'
     publishDir "${params.outdir}" , mode: 'copy',
     saveAs: {filename ->
              if (filename.indexOf("zip") > 0)   "qc/fastqc/zips/$filename"
         else if (filename.indexOf("html") > 0)  "qc/fastqc/$filename"
-        else if (filename.indexOf("txt") > 0)   "qc/fastqc/$filename"
     }
     
     when:
     !params.skipFastQC && !params.skipAllQC    
 
     input:
-    set val(prefix), file(trimmed_reads) from trimmed_reads_fastqc
+    set val(name), file(trimmed_reads) from trimmed_reads_fastqc
 
     output:
-    file "*_fastqc.{zip,html,txt}" into trimmed_fastqc_results
+    file "*_fastqc.{zip,html}" into trimmed_fastqc_results
 
     script:
     """
-    echo ${trimmed_reads.simpleName}
+    echo ${name}
+    
     fastqc ${trimmed_reads}
     """
 }
@@ -1058,10 +1058,15 @@ process igvtools {
 /*
  * STEP 9 - MultiQC
  */
+
+/*
+ * STEP 9 - MultiQC
+ */
 process multiQC {
     validExitStatus 0,1,143
     errorStrategy 'ignore'
-    publishDir "${params.outdir}/multiqc/", mode: 'copy'
+    publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
+    publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "*_data"
 
     when:
     !params.skipMultiQC && !params.skipAllQC
@@ -1069,14 +1074,14 @@ process multiQC {
     input:
     file multiqc_config
     file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
-    file ('qc/fastqc/*') from (trimmed_fastqc_results).collect()
-    file ('qc/trimstats/*') from (trim_stats).collect()
+    file ('qc/fastqc/*') from trimmed_fastqc_results.collect()
+    file ('qc/trimstats/*') from trim_stats.collect()
     file ('qc/mapstats/*') from bam_flagstat.collect()
     file ('qc/rseqc/*') from rseqc_results.collect()
     file ('qc/preseq/*') from preseq_results.collect()
     file ('software_versions/*') from software_versions_yaml
     file ('qc/hisat2_mapstats/*') from hisat2_mapstats.collect()
-    file ('qc/picard/*') from picard_stats_multiqc.collect()
+    file ('qc/picard/*') from picard_stats_multiqc.collect()    
 
     output:
     file "*multiqc_report.html" into multiqc_report
@@ -1349,7 +1354,6 @@ process nqc {
     file (bedgraphs:'mapped/bedgraphs/*') from nqc_bg.collect()
     file (duplication_files:'qc/picard/dups/*') from picard_stats_nqc.collect()
     file (fastqc_files:'qc/fastqc_stats/*') from fastqc_stats.collect()
-    file (fastqc_files:'qc/fastqc_stats/*') from fastqc_stats_subsample.collect()
        
     output:
     file ("*.{txt,html,png}") into nqc_out
