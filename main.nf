@@ -370,56 +370,6 @@ process sra_dump {
     }
 }
 
-num = Channel.from( '001', '002', '003', '004', '005', '006', '007', '008', '009', '01', '02', '03', '04', '05', '06', '07', '08', '09', '1', '2', '3', '4', '5', '6', '7', '8', '9' )
-
-/*
- * STEP 1c - Subsample
- */
-
-process subsample {
-    validExitStatus 0,1
-    tag "$prefix"
-    memory '8 GB'
-    cpus 8
-    publishDir "${params.outdir}" , mode: 'copy',
-    saveAs: {filename ->
-             if (filename.indexOf("zip") > 0)                                                "subsample/qc/fastqc/zips/$filename"
-        else if (filename.indexOf("html") > 0)                                               "subsample/qc/fastqc/$filename"
-        else if (filename.indexOf("txt") > 0)                                                "qc/fastqc_stats/$filename"            
-        else if ((filename.indexOf("fastq.gz") > 0) & (params.savefq || params.saveAllfq))   "subsample/fastq/$filename"
-    }
-    
-    when:
-    params.nqc
-
-    input:
-    set val(prefix), file(reads) from fastq_reads_sra_subsample.mix(fastq_reads_subsample)
-    each x from num
-
-    output:
-    file "*.fastq.gz" into fastq_reads_trim_subsample, fastq_reads_qc_subsample
-    file "*.{zip,html}" into fastqc_results_subsample
-    file "*.fastqc_stats.txt" into fastqc_stats_subsample
-
-    script:
-    """
-    echo ${x}
-    
-    seqkit sample \
-        ${reads} \
-        -p .${x} \
-        -j 8 \
-        -o ${prefix}_${x}.fastq.gz
-        
-    fastqc ${prefix}_${x}.fastq.gz \
-        -t 8
-        
-    ${params.extract_fastqc_stats} \
-        --srr=${prefix}_${x} \
-        > ${prefix}_${x}.fastqc_stats.txt
-    """
-}
-
 /*
  * STEP 1b - FastQC
  */
@@ -462,213 +412,148 @@ process fastQC {
  * STEP 2a - Trimming
  */
 
-process bbduk {
-    validExitStatus 0,1
+process bbduk_hisat2 {
+    validExitStatus 0
     tag "$name"
-    cpus 16
+    cpus 32
     time '2h'
-    memory '20 GB'
+    memory '40 GB'
     publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.{refstats,trimstats}.txt"
+    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*hisat2_mapstats.txt"    
     if (params.saveTrim || params.saveAllfq) {
         publishDir "${params.outdir}/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
     }    
 
     input:
+    file(indices) from hisat2_indices
+    val(indices_path) from hisat2_indices        
     set val(name), file(reads) from fastq_reads_trim.mix(fastq_reads_trim_sra)
 
     output:
-    set val(reads.simpleName), file("*.trim.fastq.gz") into trimmed_reads_fastqc, trimmed_reads_hisat2
+    file "*.trim.fastq.gz" into trimmed_reads_fastqc
     file "*.{refstats,trimstats}.txt" into trim_stats
+    set val(name), file("*.sam") into hisat2_sam
+    file("*hisat2_mapstats.txt") into hisat2_mapstats       
 
-    script:  
+    script:
+    prefix_pe = reads[0].toString() - ~/(_1\.)?(_R1)?(\.fq)?(fq)?(\.fastq)?(fastq)?(\.gz)?$/
+    prefix_se = reads[0].toString() - ~/(\.fq)?(\.fastq)?(\.gz)?$/     
     if (!params.singleEnd && params.flip) {
         """
         echo ${name}         
-        reformat.sh -Xmx20g \
-                t=16 \
-                in=${name}_1.fastq.gz \
-                in2=${name}_2.fastq.gz \
-                out=${name}_1.flip.fastq.gz \
-                out2=${name}_2.flip.fastq.gz \
+        reformat.sh -Xmx40g \
+                t=32 \
+                in=${reads[0]} \
+                in2=${reads[1]} \
+                out=${prefix_pe}_1.flip.fastq.gz \
+                out2=${prefix_pe}_2.flip.fastq.gz \
                 rcomp=t
                 
-        bbduk.sh -Xmx20g \
-                  t=16 \
-                  in=${name}_1.flip.fastq.gz \
-                  in2=${name}_2.flip.fastq.gz \
-                  out=${name}_1.flip.trim.fastq.gz \
-                  out2=${name}_2.flip.trim.fastq.gz \
+        bbduk.sh -Xmx40g \
+                  t=32 \
+                  in=${prefix_pe}_1.flip.fastq.gz \
+                  in2=${prefix_pe}_2.flip.fastq.gz \
+                  out=${prefix_pe}_1.flip.trim.fastq.gz \
+                  out2=${prefix}_2.flip.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${name}.trimstats.txt \
-                  refstats=${name}.refstats.txt
+                  stats=${prefix_pe}.trimstats.txt \
+                  refstats=${prefix_pe}.refstats.txt
+                  
+        hisat2 -p 32 \
+               --very-sensitive \
+               --no-spliced-alignment \
+               -x ${indices_path} \
+               -1 ${prefix_pe}_1.flip.trim.fastq.gz \
+               -2 ${prefix_pe}_2.flip.trim.fastq.gz \
+               --new-summary \
+               > ${prefix_pe}.sam \
+               2> ${prefix_pe}.hisat2_mapstats.txt                  
         """
-    } else if (params.flip) {
+    } else if (params.singleEnd && params.flip) {
         """
         echo ${name}        
-        reformat.sh -Xmx20g \
-                t=16 \
-                in=${name}.fastq.gz \
-                out=${name}.flip.fastq.gz \
+        reformat.sh -Xmx40g \
+                t=32 \
+                in=${reads} \
+                out=${prefix_se}.flip.fastq.gz \
                 rcomp=t
         
-        bbduk.sh -Xmx20g \
-                  t=16 \
-                  in=${name}.flip.fastq.gz \
-                  out=${name}.flip.trim.fastq.gz \
+        bbduk.sh -Xmx40g \
+                  t=32 \
+                  in=${prefix_se}.flip.fastq.gz \
+                  out=${prefix_se}.flip.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
-                  tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${name}.trimstats.txt \
-                  refstats=${name}.refstats.txt
+                  stats=${prefix_se}.trimstats.txt \
+                  refstats=${prefix_se}.refstats.txt
+                  
+        hisat2  -p 32 \
+                --very-sensitive \
+                --no-spliced-alignment \
+                -x ${indices_path}\
+                -U ${prefix_se}.trim.fastq.gz  \
+                --new-summary \
+                > ${prefix_se}.sam \
+                2> ${prefix_se}.hisat2_mapstats.txt                  
         """
     }
         else if (!params.singleEnd) {
         """
-        echo ${name}
+        echo ${prefix_pe}
 
-        bbduk.sh -Xmx20g \
-                  t=16 \
-                  in=${name}_1.fastq.gz \
-                  in2=${name}_2.fastq.gz \
-                  out=${name}_1.trim.fastq.gz \
-                  out2=${name}_2.trim.fastq.gz \
+        bbduk.sh -Xmx40g \
+                  t=32 \
+                  in=${reads[0]} \
+                  in2=${reads[1]} \
+                  out=${prefix_pe}_1.trim.fastq.gz \
+                  out2=${prefix_pe}_2.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${name}.trimstats.txt \
-                  refstats=${name}.refstats.txt
+                  stats=${prefix_pe}.trimstats.txt \
+                  refstats=${prefix_pe}.refstats.txt
+                  
+        hisat2 -p 32 \
+               --very-sensitive \
+               --no-spliced-alignment \
+               -x ${indices_path} \
+               -1 ${prefix_pe}_1.flip.trim.fastq.gz \
+               -2 ${prefix_pe}_2.flip.trim.fastq.gz \
+               --new-summary \
+               > ${prefix_pe}.sam \
+               2> ${prefix_pe}.hisat2_mapstats.txt                          
         """
     } else {
         """
-        echo ${name}
+        echo ${prefix_se}
 
-        bbduk.sh -Xmx20g \
-                  t=16 \
-                  in=${name}.fastq.gz \
-                  out=${name}.trim.fastq.gz \
+        bbduk.sh -Xmx40g \
+                  t=32 \
+                  in=${reads} \
+                  out=${prefix_se}.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
-                  tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${name}.trimstats.txt \
-                  refstats=${name}.refstats.txt
-        """
-    } 
-}
-
-/*
- * STEP 2a - Trimming Subsample
- */
-
-process bbduk_sub {
-    validExitStatus 0,1
-    tag "$reads"
-    cpus 16
-    time '2h'
-    memory '20 GB'
-    publishDir "${params.outdir}/subsample/qc/trimstats", mode: 'copy', pattern: "*.{refstats,trimstats}.txt"
-    if (params.saveTrim || params.saveAllfq) {
-        publishDir "${params.outdir}/subsample/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
-    }    
-
-    input:
-    file(reads) from fastq_reads_trim_subsample.flatten()
-
-    output:
-    set val(reads.simpleName), file("*.trim.fastq.gz") into trimmed_reads_fastqc_subsample, trimmed_reads_hisat2_subsample
-    file "*.{refstats,trimstats}.txt" into trim_stats_subsample
-
-    script:  
-    if (!params.singleEnd && params.flip) {
-        """
-        echo ${reads.simpleName}       
- 
-        reformat.sh -Xmx20g \
-                t=16 \
-                in=${reads.simpleName}_1.fastq.gz \
-                in2=${reads.simpleName}_2.fastq.gz \
-                out=${reads.simpleName}_1.flip.fastq.gz \
-                out2=${reads.simpleName}_2.flip.fastq.gz \
-                rcomp=t        
-        bbduk.sh -Xmx20g \
-                  t=16 \
-                  in=${reads.simpleName}_1.flip.fastq.gz \
-                  in2=${reads.simpleName}_2.flip.fastq.gz \
-                  out=${reads.simpleName}_1.flip.trim.fastq.gz \
-                  out2=${reads.simpleName}_2.flip.trim.fastq.gz \
-                  ref=${bbmap_adapters} \
-                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
-                  tpe tbo \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${reads.simpleName}.trimstats.txt \
-                  refstats=${reads.simpleName}.refstats.txt
-        """
-    } else if (params.flip) {
-        """
-        echo ${reads.simpleName}
-
-        reformat.sh -Xmx20g \
-                t=16 \
-                in=${reads.simpleName}.fastq.gz \
-                out=${reads.simpleName}.flip.fastq.gz \
-                rcomp=t
-        
-        bbduk.sh -Xmx20g \
-                  t=16 \
-                  in=${reads.simpleName}.flip.fastq.gz \
-                  out=${reads.simpleName}.flip.trim.fastq.gz \
-                  ref=${bbmap_adapters} \
-                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
-                  tpe tbo \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${reads.simpleName}.trimstats.txt \
-                  refstats=${reads.simpleName}.refstats.txt
-        """
-    }
-        else if (!params.singleEnd) {
-        """
-        echo ${reads.simpleName}
-        
-        bbduk.sh -Xmx20g \
-                  t=16 \
-                  in=${reads.simpleName}_1.fastq.gz \
-                  in2=${reads.simpleName}_2.fastq.gz \
-                  out=${reads.simpleName}_1.trim.fastq.gz \
-                  out2=${reads.simpleName}_2.trim.fastq.gz \
-                  ref=${bbmap_adapters} \
-                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
-                  tpe tbo \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${reads.simpleName}.trimstats.txt \
-                  refstats=${reads.simpleName}.refstats.txt
-        """
-    } else {
-        """
-        echo ${reads.simpleName}
-      
-        bbduk.sh -Xmx20g \
-                  t=16 \
-                  in=${reads.simpleName}.fastq.gz \
-                  out=${reads.simpleName}.trim.fastq.gz \
-                  ref=${bbmap_adapters} \
-                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
-                  tpe tbo \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${reads.simpleName}.trimstats.txt \
-                  refstats=${reads.simpleName}.refstats.txt
+                  stats=${prefix_se}.trimstats.txt \
+                  refstats=${prefix_se}.refstats.txt
+                  
+        hisat2  -p 32 \
+                --very-sensitive \
+                --no-spliced-alignment \
+                -x ${indices_path}\
+                -U ${prefix_se}.trim.fastq.gz \
+                --new-summary \
+                > ${prefix_se}.sam \
+                2> ${prefix_se}.hisat2_mapstats.txt                  
         """
     } 
 }
@@ -680,7 +565,7 @@ process bbduk_sub {
 
 process fastQC_trimmed {
     validExitStatus 0,1
-    tag "$name"
+    tag "$prefix"
     memory '4 GB'
     publishDir "${params.outdir}" , mode: 'copy',
     saveAs: {filename ->
@@ -693,84 +578,73 @@ process fastQC_trimmed {
     !params.skipFastQC && !params.skipAllQC    
 
     input:
-    set val(name), file(trimmed_reads) from trimmed_reads_fastqc
+    set val(prefix), file(trimmed_reads) from trimmed_reads_fastqc
 
     output:
     file "*_fastqc.{zip,html,txt}" into trimmed_fastqc_results
 
     script:
-    prefix = trimmed_reads.baseName
     """
     echo ${trimmed_reads.simpleName}
     fastqc ${trimmed_reads}
     """
 }
 
-/*
- * STEP 3 - Map reads to reference genome
- */
-
-process hisat2 {
-    tag "$name"
-    validExitStatus 0
-    cpus 32
-    memory '40 GB'
-    time '2h'
-    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*.txt"
-
-    input:
-    file(indices) from hisat2_indices
-    val(indices_path) from hisat2_indices
-    set val(name), file(trimmed_reads) from trimmed_reads_hisat2.mix(trimmed_reads_hisat2_subsample)
-
-    output:
-    set val(name), file("*.sam") into hisat2_sam
-    file("*.txt") into hisat2_mapstats    
-
-    script:
-    //prefix = trimmed_reads.baseName
-    if (!params.singleEnd && !params.flip) {
-        """
-        echo ${name}
-    
-        hisat2  -p 32 \
-                --very-sensitive \
-                -x ${indices_path} \
-                -1 ${name}_1.trim.fastq.gz \
-                -2 ${name}_2.trim.fastq.gz \
-                --new-summary \
-                > ${name}.sam \
-                2> ${name}.hisat2_mapstats.txt                
-        """
-    }
-    if (!params.singleEnd && params.flip) {
-        """
-        echo ${name}
-        hisat2  -p 32 \
-                --very-sensitive \
-                -x ${indices_path} \
-                -1 ${name}_1.flip.trim.fastq.gz \
-                -2 ${name}_2.flip.trim.fastq.gz \
-                --new-summary \
-                > ${name}.sam \
-                2> ${name}.hisat2_mapstats.txt                
-        """
-    }
-    else {
-        """
-        echo ${name}
-    
-        hisat2  -p 32 \
-                --very-sensitive \
-                -x ${indices_path}\
-                -U ${trimmed_reads} \
-                --new-summary \
-                > ${name}.sam \
-                2> ${name}.hisat2_mapstats.txt                
-        """
-    }
-}
-
+///*
+// * STEP 3 - Map reads to reference genome
+// */
+//
+//process hisat2 {
+//    tag "$name"
+//    validExitStatus 0
+//    cpus 32
+//    memory '40 GB'
+//    time '2h'
+//    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*.txt"
+//
+//    input:
+//    file(indices) from hisat2_indices
+//    val(indices_path) from hisat2_indices
+//    set val(name), file(trimmed_reads) from trimmed_reads_hisat2
+//
+//    output:
+//    set val(name), file("*.sam") into hisat2_sam
+//    file("*.txt") into hisat2_mapstats    
+//
+//    script:
+//    prefix_pe = trimmed_reads[0].toString() - ~/(_1\.)?(_R1)?(flip)?(trim)?(\.flip)?(\.trim)?(\.fq)?(fq)?(\.fastq)?(fastq)?(\.gz)?$/
+//    prefix_se = trimmed_reads[0].toString() - ~/(\.flip)?(\.trim)?(\.fq)?(\.fastq)?(\.gz)?$/  
+//    if (!params.singleEnd) {
+//        """
+//        echo ${prefix_pe}
+//    
+//        hisat2 -p 32 \
+//               --very-sensitive \
+//               --no-spliced-alignment \
+//               -x ${indices_path} \
+//               -1 ${trimmed_reads[0]} \
+//               -2 ${trimmed_reads[1]} \
+//               --new-summary \
+//               > ${prefix_pe}.sam \
+//               2> ${prefix_pe}.hisat2_mapstats.txt                
+//        """
+//    }
+//    else {
+//        """
+//        echo ${prefix_se}
+//    
+//        hisat2  -p 32 \
+//                --very-sensitive \
+//                --no-spliced-alignment \
+//                -x ${indices_path}\
+//                -U ${trimmed_reads} \
+//                --new-summary \
+//                > ${prefix_se}.sam \
+//                2> ${prefix_se}.hisat2_mapstats.txt                
+//        """
+//    }
+//}
+//
 /*
  * STEP 4 - Convert to BAM format and sort
  */
@@ -1196,9 +1070,7 @@ process multiQC {
     file multiqc_config
     file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
     file ('qc/fastqc/*') from (trimmed_fastqc_results).collect()
-    file ('subsample/qc/fastqc/*') from (fastqc_results_subsample).collect()    
     file ('qc/trimstats/*') from (trim_stats).collect()
-    file ('subsample/qc/trimstats/*') from (trim_stats_subsample).collect()
     file ('qc/mapstats/*') from bam_flagstat.collect()
     file ('qc/rseqc/*') from rseqc_results.collect()
     file ('qc/preseq/*') from preseq_results.collect()
@@ -1486,7 +1358,8 @@ process nqc {
         """
         python3 ${params.nqc_py} \\
             -b './mapped/bedgraphs/' \\
-            -d './qc/picard/' \\
+            -d './qc/picard/dups/' \\
+            -r './qc/fastqc_stats/' \\
             -g ${chrom_sizes} \\
             -t 16
         """
