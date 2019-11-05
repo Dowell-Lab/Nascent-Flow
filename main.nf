@@ -63,6 +63,11 @@ def helpMessage() {
         --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
         --flip                         Reverse complements each strand. Necessary for some library preps.
         
+    Strandedness:
+        --forwardStranded              The library is forward stranded
+        --reverseStranded              The library is reverse stranded
+        --unStranded                   The default behaviour        
+        
     Save options:
         --outdir                       Specifies where to save the output from the nextflow run.
         --savefq                       Saves compressed raw fastq reads.
@@ -182,21 +187,21 @@ if (params.fastqs) {
         fastq_reads_trim = Channel
                             .fromPath(params.fastqs)
                             .map { file -> tuple(file.simpleName, file) }
-        fastq_reads_subsample = Channel
+        fastq_reads_hisat2_notrim = Channel
                             .fromPath(params.fastqs)
                             .map { file -> tuple(file.simpleName, file) }        
     } else {
         Channel
             .fromFilePairs( params.fastqs, size: params.singleEnd ? 1 : 2 )
             .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
-            .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip; fastq_reads_subsample }
+            .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_hisat2_notrim }
     }
 }
 
 else {
     Channel
         .empty()
-        .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_gzip; fastq_reads_subsample }
+        .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_hisat2_notrim }
 }
 
 if (params.sras) {
@@ -226,6 +231,7 @@ if(params.sras) summary['SRAs']             = params.sras
 summary['Genome Ref']       = params.genome
 summary['Thread fqdump']    = params.threadfqdump ? 'YES' : 'NO'
 summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
+summary['Strandedness']     = (params.unStranded ? 'None' : params.forwardStranded ? 'Forward' : params.reverseStranded ? 'Reverse' : 'None')
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
 summary['Save BAM']         = params.saveBAM ? 'YES' : 'NO'
 summary['Save BigWig']      = params.savebw ? 'YES' : 'NO'
@@ -335,7 +341,7 @@ process sra_dump {
     set val(prefix), file(reads) from read_files_sra
 
     output:
-    set val(prefix), file("*.fastq.gz") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_sra_subsample
+    set val(prefix), file("*.fastq.gz") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_hisat2_notrim_sra
    
 
     script:
@@ -422,7 +428,10 @@ process bbduk_hisat2 {
     publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*hisat2_mapstats.txt"    
     if (params.saveTrim || params.saveAllfq) {
         publishDir "${params.outdir}/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
-    }    
+    }
+    
+    when:
+    !params.noTrim
 
     input:
     file(indices) from hisat2_indices
@@ -437,7 +446,15 @@ process bbduk_hisat2 {
 
     script:
     prefix_pe = reads[0].toString() - ~/(_1\.)?(_R1)?(\.fq)?(fq)?(\.fastq)?(fastq)?(\.gz)?$/
-    prefix_se = reads[0].toString() - ~/(\.fq)?(\.fastq)?(\.gz)?$/     
+    prefix_se = reads[0].toString() - ~/(\.fq)?(\.fastq)?(\.gz)?$/
+    
+    def rnastrandness = ''
+    if (params.forwardStranded && !params.unStranded){
+        rnastrandness = params.singleEnd ? '--rna-strandness F' : '--rna-strandness FR'
+    } else if (params.reverseStranded && !params.unStranded){
+        rnastrandness = params.singleEnd ? '--rna-strandness R' : '--rna-strandness RF'
+    }
+    
     if (!params.singleEnd && params.flip) {
         """
         echo ${name}         
@@ -454,7 +471,7 @@ process bbduk_hisat2 {
                   in=${prefix_pe}_1.flip.fastq.gz \
                   in2=${prefix_pe}_2.flip.fastq.gz \
                   out=${prefix_pe}_1.flip.trim.fastq.gz \
-                  out2=${prefix}_2.flip.trim.fastq.gz \
+                  out2=${prefix_pe}_2.flip.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
@@ -469,6 +486,7 @@ process bbduk_hisat2 {
                -x ${indices_path} \
                -1 ${prefix_pe}_1.flip.trim.fastq.gz \
                -2 ${prefix_pe}_2.flip.trim.fastq.gz \
+               $rnastrandness \
                --new-summary \
                > ${prefix_pe}.sam \
                2> ${prefix_pe}.hisat2_mapstats.txt                  
@@ -497,7 +515,8 @@ process bbduk_hisat2 {
                 --very-sensitive \
                 --no-spliced-alignment \
                 -x ${indices_path}\
-                -U ${prefix_se}.trim.fastq.gz  \
+                -U ${prefix_se}.flip.trim.fastq.gz  \
+                $rnastrandness \
                 --new-summary \
                 > ${prefix_se}.sam \
                 2> ${prefix_se}.hisat2_mapstats.txt                  
@@ -525,8 +544,9 @@ process bbduk_hisat2 {
                --very-sensitive \
                --no-spliced-alignment \
                -x ${indices_path} \
-               -1 ${prefix_pe}_1.flip.trim.fastq.gz \
-               -2 ${prefix_pe}_2.flip.trim.fastq.gz \
+               -1 ${prefix_pe}_1.trim.fastq.gz \
+               -2 ${prefix_pe}_2.trim.fastq.gz \
+               $rnastrandness \
                --new-summary \
                > ${prefix_pe}.sam \
                2> ${prefix_pe}.hisat2_mapstats.txt                          
@@ -551,6 +571,7 @@ process bbduk_hisat2 {
                 --no-spliced-alignment \
                 -x ${indices_path}\
                 -U ${prefix_se}.trim.fastq.gz \
+                $rnastrandness \
                 --new-summary \
                 > ${prefix_se}.sam \
                 2> ${prefix_se}.hisat2_mapstats.txt                  
@@ -574,7 +595,7 @@ process fastQC_trim {
     }
     
     when:
-    !params.skipFastQC && !params.skipAllQC    
+    !params.skipFastQC && !params.skipAllQC && !noTrim
 
     input:
     set val(name), file(trimmed_reads) from trimmed_reads_fastqc
@@ -590,61 +611,74 @@ process fastQC_trim {
     """
 }
 
-///*
-// * STEP 3 - Map reads to reference genome
-// */
-//
-//process hisat2 {
-//    tag "$name"
-//    validExitStatus 0
-//    cpus 32
-//    memory '40 GB'
-//    time '2h'
-//    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*.txt"
-//
-//    input:
-//    file(indices) from hisat2_indices
-//    val(indices_path) from hisat2_indices
-//    set val(name), file(trimmed_reads) from trimmed_reads_hisat2
-//
-//    output:
-//    set val(name), file("*.sam") into hisat2_sam
-//    file("*.txt") into hisat2_mapstats    
-//
-//    script:
-//    prefix_pe = trimmed_reads[0].toString() - ~/(_1\.)?(_R1)?(flip)?(trim)?(\.flip)?(\.trim)?(\.fq)?(fq)?(\.fastq)?(fastq)?(\.gz)?$/
-//    prefix_se = trimmed_reads[0].toString() - ~/(\.flip)?(\.trim)?(\.fq)?(\.fastq)?(\.gz)?$/  
-//    if (!params.singleEnd) {
-//        """
-//        echo ${prefix_pe}
-//    
-//        hisat2 -p 32 \
-//               --very-sensitive \
-//               --no-spliced-alignment \
-//               -x ${indices_path} \
-//               -1 ${trimmed_reads[0]} \
-//               -2 ${trimmed_reads[1]} \
-//               --new-summary \
-//               > ${prefix_pe}.sam \
-//               2> ${prefix_pe}.hisat2_mapstats.txt                
-//        """
-//    }
-//    else {
-//        """
-//        echo ${prefix_se}
-//    
-//        hisat2  -p 32 \
-//                --very-sensitive \
-//                --no-spliced-alignment \
-//                -x ${indices_path}\
-//                -U ${trimmed_reads} \
-//                --new-summary \
-//                > ${prefix_se}.sam \
-//                2> ${prefix_se}.hisat2_mapstats.txt                
-//        """
-//    }
-//}
-//
+
+/*
+ * STEP 3 - Map reads to reference genome
+ */
+
+if (params.noTrim) {
+    process hisat2 {
+        tag "$name"
+        validExitStatus 0
+        cpus 32
+        memory '40 GB'
+        time '2h'
+        publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*.txt"
+    
+        input:
+        file(indices) from hisat2_indices
+        val(indices_path) from hisat2_indices
+        set val(name), file(reads) from fastq_reads_hisat2_notrim_sra.mix(fastq_reads_hisat2_notrim)
+    
+        output:
+        set val(name), file("*.sam") into hisat2_sam
+        file("*.txt") into hisat2_mapstats
+    
+        script:
+        prefix_pe = trimmed_reads[0].toString() - ~/(_1\.)?(_R1)?(flip)?(trim)?(\.flip)?(\.fq)?(fq)?(\.fastq)?(fastq)?(\.gz)?$/
+        prefix_se = trimmed_reads[0].toString() - ~/(\.flip)?(\.fq)?(\.fastq)?(\.gz)?$/
+        
+        def rnastrandness = ''
+        if (params.forwardStranded && !params.unStranded){
+            rnastrandness = params.singleEnd ? '--rna-strandness F' : '--rna-strandness FR'
+        } else if (params.reverseStranded && !params.unStranded){
+            rnastrandness = params.singleEnd ? '--rna-strandness R' : '--rna-strandness RF'
+        }
+        
+        if (!params.singleEnd) {
+            """
+            echo ${prefix_pe}
+        
+            hisat2 -p 32 \
+                   --very-sensitive \
+                   --no-spliced-alignment \
+                    $rnastrandness \
+                   -x ${indices_path} \
+                   -1 ${reads[0]} \
+                   -2 ${reads[1]} \
+                   --new-summary \
+                   > ${prefix_pe}.sam \
+                   2> ${prefix_pe}.hisat2_mapstats.txt                
+            """
+        }
+        else {
+            """
+            echo ${prefix_se}
+        
+            hisat2  -p 32 \
+                    --very-sensitive \
+                    --no-spliced-alignment \
+                    $rnastrandness \
+                    -x ${indices_path} \
+                    -U ${reads} \
+                    --new-summary \
+                    > ${prefix_se}.sam \
+                    2> ${prefix_se}.hisat2_mapstats.txt                
+            """
+        }
+    }
+}
+
 /*
  * STEP 4 - Convert to BAM format and sort
  */
@@ -701,16 +735,16 @@ process samtools {
 }
 
 sorted_bam_ch
-   .into {sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup; sorted_bams_for_picard}
+   .into { sorted_bams_for_preseq; sorted_bams_for_rseqc; sorted_bams_for_dreg_prep; sorted_bams_for_pileup; sorted_bams_for_picard; sorted_bam_for_bedgraph }
 
 sorted_bam_indices_ch
-    .into {sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc; sorted_bam_indices_for_picard}
+    .into { sorted_bam_indicies_for_pileup; sorted_bam_indices_for_preseq; sorted_bam_indices_for_rseqc; sorted_bam_indices_for_picard; sorted_bam_index_for_bedgraph }
 
 cram_ch
-    .into {cram_for_bedgraph; cram_for_counts; cram_dreg_prep}
+    .into { cram_for_counts; cram_dreg_prep }
 
 cram_index_ch
-    .into {cram_index_for_bedgraph; cram_index_for_counts; cram_index_dreg_prep}
+    .into { cram_index_for_counts; cram_index_dreg_prep} 
 
 /*
  *STEP 5+ - Picard tools
@@ -879,8 +913,8 @@ process bedgraphs {
     publishDir "${params.outdir}/mapped/bedgraphs", mode: 'copy', pattern: "${name}.bedGraph"      
 
     input:
-    set val(name), file(cram_file) from cram_for_bedgraph
-    set val(name), file(cram_indices) from cram_index_for_bedgraph
+    set val(name), file(bam_file) from sorted_bam_for_bedgraph
+    set val(name), file(bam_indices) from sorted_bam_index_for_bedgraph
     set val(name), file(millions_mapped) from bam_milmapped_bedgraph
 
     output:
@@ -892,29 +926,31 @@ process bedgraphs {
     set val(name), file("${name}.neg.rcc.bedGraph") into bedgraph_bigwig_neg
 
     script:
-    """
-    export CRAM_REFERENCE=${genome}
-    
+    if (params.singleEnd) {
+    """    
     genomeCoverageBed \
-                     -bg \
-                     -strand + \
-                     -g ${chrom_sizes} \
-                     -ibam ${cram_file} \
-                     > ${name}.pos.bedGraph
+        -bg \
+        -strand + \
+        -pc \
+        -g ${chrom_sizes} \
+        -ibam ${bam_file} \
+        > ${name}.pos.bedGraph
     genomeCoverageBed \
-                     -bg \
-                     -strand - \
-                     -g ${chrom_sizes} \
-                     -ibam ${cram_file} \
-                     | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' > ${name}.neg.bedGraph
+        -bg \
+        -strand - \
+        -pc \
+        -g ${chrom_sizes} \
+        -ibam ${bam_file} \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        > ${name}.neg.bedGraph
 
     cat ${name}.pos.bedGraph \
-                    ${name}.neg.bedGraph \
-                    > ${name}.unsorted.bedGraph
+        ${name}.neg.bedGraph \
+        > ${name}.unsorted.bedGraph
         
     sortBed \
-                    -i ${name}.unsorted.bedGraph \
-                    > ${name}.bedGraph
+        -i ${name}.unsorted.bedGraph \
+        > ${name}.bedGraph
 
     python ${params.rcc} \
         ${name}.bedGraph \
@@ -933,6 +969,90 @@ process bedgraphs {
         ${name}.unsorted.neg.rcc.bedGraph
     sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
     """
+    } else {
+    """   
+    samtools view \
+        -h -b -f 0x0040 \
+        ${bam_file} \
+        > ${name}.first_pair.bam
+        
+    samtools view \
+        -h -b -f 0x0080 \
+        ${bam_file} \
+        > ${name}.second_pair.bam
+        
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand - \
+        -g ${chrom_sizes} \
+        -ibam ${name}.first_pair.bam \
+        | sortBed \
+        > ${name}.first_pair.pos.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand + \
+        -g ${chrom_sizes} \
+        -ibam ${name}.first_pair.bam \
+        | sortBed \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        > ${name}.first_pair.neg.bedGraph
+                     
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand + \
+        -g ${chrom_sizes} \
+        -ibam ${name}.second_pair.bam \
+        | sortBed \
+        > ${name}.second_pair.pos.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand - \
+        -g ${chrom_sizes} \
+        -ibam ${name}.second_pair.bam \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        | sortBed \
+        > ${name}.second_pair.neg.bedGraph
+                     
+    unionBedGraphs \
+        -i ${name}.first_pair.pos.bedGraph ${name}.second_pair.pos.bedGraph \
+        | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
+        > ${name}.pos.bedGraph 
+        
+    unionBedGraphs \
+        -i ${name}.first_pair.neg.bedGraph ${name}.second_pair.neg.bedGraph \
+        | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
+        > ${name}.neg.bedGraph 
+    
+    cat ${name}.pos.bedGraph \
+        ${name}.neg.bedGraph \
+        > ${name}.unsorted.bedGraph
+        
+    sortBed \
+        -i ${name}.unsorted.bedGraph \
+        > ${name}.bedGraph
+
+    python ${params.rcc} \
+        ${name}.bedGraph \
+        ${millions_mapped} \
+        ${name}.rcc.bedGraph
+        
+    python ${params.rcc} \
+        ${name}.pos.bedGraph \
+        ${millions_mapped} \
+        ${name}.unsorted.pos.rcc.bedGraph
+    sortBed -i ${name}.unsorted.pos.rcc.bedGraph > ${name}.pos.rcc.bedGraph
+
+    python ${params.rcc} \
+        ${name}.neg.bedGraph \
+        ${millions_mapped} \
+        ${name}.unsorted.neg.rcc.bedGraph
+    sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph     
+    """
+    }
  }
 
 /*
@@ -1326,7 +1446,7 @@ process merge_multicov {
     file (multicov:'counts/*') from counts_bed_out.collect()
        
     output:
-    file ("merged_counts.bed") into merged_counts_bed_out
+    file ("merged_gene_counts.bed") into merged_counts_bed_out
         
     script:
         """
