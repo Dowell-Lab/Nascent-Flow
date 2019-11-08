@@ -107,7 +107,7 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 
 | Arguments             | Usage       | Description                                                                  |
 |-----------------------|-------------|------------------------------------------------------------------------------|
-| --unStranded          |             | Input data will be procssed in HISAT2 as unstranded.                         |
+| --unStranded          |             | Input data will be procssed in HISAT2 as unstranded (default).               |
 | --forwardStranded     |             | Indicates data is forward first-stranded.                                    |
 | --reverseStranded     |             | Indicates data is reverse first-stranded.                                    |
 
