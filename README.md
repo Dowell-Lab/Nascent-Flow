@@ -101,6 +101,15 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 |--------------|-------------|------------------------------------------------------------------------------|
 | --singleEnd  |             | Specifies that the input files are not paired reads (default is paired-end). |
 | --flip       |             | Reverse complements each strand. Necessary for some library preps.           |
+| --flipR2     |             | Reverse complements R2. Necessary for some library preps.                    |
+
+**Strandness Options**
+
+| Arguments             | Usage       | Description                                                                  |
+|-----------------------|-------------|------------------------------------------------------------------------------|
+| --unStranded          |             | Input data will be procssed in HISAT2 as unstranded (default).               |
+| --forwardStranded     |             | Indicates data is forward first-stranded.                                    |
+| --reverseStranded     |             | Indicates data is reverse first-stranded.                                    |
 
 **Performance Options**
 
@@ -115,9 +124,11 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 | --skipMultiQC   |             | Skip running MultiQC.                                   |
 | --skipRSeQC     |             | Skip running RSeQC.                                     |
 | --skippreseq    |             | Skip running preseq.                                    |
+| --skippicard    |             | Skip running picard.                                    |
 | --skipFastQC    |             | Skip running FastQC                                     |
 | --skippileup    |             | Skip running pileup.                                    |
 | --skipAllQC     |             | Skip running all QC (does not include mapstats).        |
+| --nqc           |             | Run Nascent QC.                                         |
 
 **Analysis Options**
 

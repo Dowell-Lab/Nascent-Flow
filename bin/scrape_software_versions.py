@@ -9,7 +9,7 @@ regexes = {
     'FastQC': ['v_fastqc.txt', r"FastQC v(\S+)"],
     'MultiQC': ['v_multiqc.txt', r"multiqc, version (\S+)"],
     'Samtools': ['v_samtools.txt', r"samtools (\S+)"],
-    'fasterq-dump': ['v_fasterq-dump.txt', r"fasterq-dump : (\S+)"],
+    'fastq-dump': ['v_fastq-dump.txt', r"fastq-dump : (\S+)"],
     'RseQC': ['v_rseqc.txt', r"RSeQC version(\S+)"],
     'MultiQC': ['v_multiqc.txt', r"MultiQC version(\S+)"],
     'Bedtools': ['v_bedtools.txt', r"bedtools v(\S+)"],
@@ -21,7 +21,7 @@ regexes = {
     'Tfit': ['v_tfit.txt', r"Tfit version(\S+)"],
     'DAStk': ['v_dastk.txt', r"DAStk version(\S+)"],
 }
-    #'RseQC': ['v_rseqc.txt', r"RSeQC version(\S+)"],
+    #'Picard': ['v_picard.txt', r"Picard version(\S+)"],    
     
 results = OrderedDict()
 results['NascentFlow'] = '<span style="color:#999999;\">N/A</span>'
