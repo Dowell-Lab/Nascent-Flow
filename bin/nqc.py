@@ -33,12 +33,14 @@ def get_bedgraph_data(params):
                                  '_1', '_2', '_3', '_4', '_5', '_6', '_7', '_8', '_9']     
     sample_name = os.path.splitext(os.path.basename(bedgraph))[0]
     splt = sample_name.split('_')
-    sample_id = '_'.join(splt[:-1]) if '_{}'.format(splt[-1:][0]) in subsample_blacklist_vals else '_'.join(splt)
+    sample_id = '_'.join(splt[:-1]) if '_{}'.format(splt[-1:][0]) in subsample_blacklist_vals else '_'.join(splt) 
     
     coverage_file = pd.read_csv(bedgraph, comment='#', names=['chr','start','stop','coverage'], sep='\t', header=None \
                                  ).assign(sample=sample_name)
     coverage_variance = coverage_file['coverage'].var(ddof=1)
-    log_coverage_variance = np.log2(coverage_file['coverage'].var(ddof=1))
+    
+# Made a mistake previously where I did not take the abs -- resulted in linear relationship -- should explore this    
+    log_coverage_variance = (np.log2(abs(coverage_file['coverage']))).var(ddof=1)
     
     complement = subprocess.Popen(['complementBed', '-i', bedgraph, '-g', genome], 
                stdout=subprocess.PIPE, 
@@ -51,13 +53,13 @@ def get_bedgraph_data(params):
     gaps['gap_size'] = gaps.end - gaps.start
     
     gap_std = gaps['gap_size'].std(ddof=1)
-    log_gap_std = np.log2(gaps['gap_size'].std(ddof=1))
+    log_gap_std = np.log2(gaps['gap_size']).std(ddof=1)
     gap_var = gaps['gap_size'].var(ddof=1)
-    log_gap_var = np.log2(gaps['gap_size'].var(ddof=1))
+    log_gap_var = np.log2(gaps['gap_size']).var(ddof=1)
     gap_median_size = gaps['gap_size'].median()    
-    log_gap_median_size = np.log2(gaps['gap_size'].median())
-    number_of_1bp_gaps = (gaps['gap_size']== 1).sum()
-    log_number_of_1bp_gaps = np.log2((gaps['gap_size'] == 1).sum()) 
+    log_gap_median_size = np.log2((gaps['gap_size']).median())
+    number_of_1bp_gaps = (gaps['gap_size'] == 0).sum()
+    log_number_of_1bp_gaps = np.log2((gaps['gap_size'] == 0).sum()) 
     
     coverage_stats = { 'sample': sample_name, \
                        'sample_id': sample_id, \
@@ -76,7 +78,7 @@ def get_bedgraph_data(params):
     
     return coverage_stats
 
-def get_complexity_data(dup_file):
+def get_mapped_complexity_data(dup_file):
     
     sample_name = os.path.splitext(os.path.basename(dup_file))[0]
     if sample_name.endswith('.marked_dup_metrics'):
@@ -87,7 +89,7 @@ def get_complexity_data(dup_file):
                                 'read_pair_optical_dups', 'percent_dup'] \
                                  ).assign(sample=sample_name)
     
-    print("Done with sample %s duplication file." % sample_name)
+    print("Done with sample %s mapped duplication file." % sample_name)
     
     dup_stats = { 'sample': sample_name, \
                          'unpaired_reads': int(dup_file_df.iloc[0]['unpaired_reads']), \
@@ -100,9 +102,24 @@ def get_complexity_data(dup_file):
                          'percent_dup': float(dup_file_df.iloc[0]['percent_dup']) }
     return dup_stats
 
+def get_read_complexity_data(dup_file):
+    
+    sample_name = os.path.splitext(os.path.basename(dup_file))[0]
+    if sample_name.endswith('.fastqc_stats'):
+        sample_name = sample_name[:-13]    
+    read_dup_file_df = pd.read_csv(dup_file, comment='#', sep='\t', skiprows=[0])
+    
+    print("Done with sample %s read duplication file." % sample_name)
+    
+    read_dup_stats = { 'sample': read_dup_file_df.iloc[0]['SRR'], \
+                         'percent_gc': int(read_dup_file_df.iloc[0]['%GC']), \
+                         'total_sequences': int(read_dup_file_df.iloc[0]['Total_Sequences']), \
+                         'percent_deduplicated': float(read_dup_file_df.iloc[0]['%Total_Deduplicated']) }
+    return read_dup_stats
+
 
 def main():
-    parser = argparse.ArgumentParser(description='Nascent QC\n\n===============================================================================================================\n\nAn algorithm which provides a metric for nascent data quality.', epilog='@Dowell Lab, Margaret Gruca, margaret.gruca@colorado.edu\nFor questions and issues, see https://github.com/Dowell-Lab/nqc', usage='%(prog)s --bedgraph /my/sample/dir/*.bedGraph --output /my/out/file.bed', formatter_class=RawTextHelpFormatter)
+    parser = argparse.ArgumentParser(description='Nascent QC\n\n===============================================================================================================\n\nAn algorithm which provides a metric for nascent data quality.', epilog='@Dowell Lab, Margaret Gruca, margaret.gruca@colorado.edu\nFor questions and issues, see https://github.com/Dowell-Lab/nqc', usage='%(prog)s --bedgraph /my/sample/dir/*.bedGraph --output /my/out/dir/', formatter_class=RawTextHelpFormatter)
     
     required = parser.add_argument_group('Required Arguments')
     optional = parser.add_argument_group('Optional Arguments')
@@ -110,8 +127,11 @@ def main():
     required.add_argument('-b', '--bedgraph', dest='bedgraphdir', \
                         help='Path to bedgraph file(s) of interest. Wildcard may be used to process multiple bedGraphs simultaneously with one output report.', required=True)
     
-    required.add_argument('-d', '--duplicates', dest='dupdir', \
-                        help='Path to picard duplication summary file(s). Wildcard may be used to process multiple duplication files simultaneously.', required=True)    
+    required.add_argument('-d', '--mapped-duplicates', dest='mappeddupdir', \
+                        help='Path to picard duplication summary file(s). Wildcard may be used to process multiple duplication files simultaneously.', required=True)
+    
+    required.add_argument('-r', '--read-duplicates', dest='readdupdir', \
+                        help='Path to fastqc duplication summary file(s). Wildcard may be used to process multiple duplication files simultaneously.', required=True)        
     
     required.add_argument('-o', '--output', dest='output', \
                         help='Path to where output stats file and plots will be saved.', required=False, default='./')
@@ -133,7 +153,8 @@ def main():
     
     threads = args.threads
     bedgraph_list = glob.glob(args.bedgraphdir + '*.bedGraph')
-    duplication_file_list = glob.glob(args.dupdir + '*.marked_dup_metrics.txt')
+    mapped_duplication_file_list = glob.glob(args.mappeddupdir + '*.marked_dup_metrics.txt')
+    read_duplication_file_list = glob.glob(args.readdupdir + '*.fastqc_stats.txt')    
     
     #subsample_blacklist_vals =  ['_001', '_002', '_003', '_004', '_005', '_006', '_007', '_008', '_009', \
     #                             '_01', '_02', '_03', '_04', '_05', '_06', '_07', '_08', '_09', \
@@ -147,21 +168,32 @@ def main():
         coverage_stats = [r.result() for r in jobs]
         
     with concurrent.futures.ProcessPoolExecutor(threads) as executor:
-        jobs = [executor.submit(get_complexity_data, file)
-                for file in duplication_file_list]
-        duplication_stats = [r.result() for r in jobs]
+        jobs = [executor.submit(get_mapped_complexity_data, file)
+                for file in mapped_duplication_file_list]
+        mapped_duplication_stats = [r.result() for r in jobs]
+        
+    with concurrent.futures.ProcessPoolExecutor(threads) as executor:
+        jobs = [executor.submit(get_read_complexity_data, file)
+                for file in read_duplication_file_list]
+        read_duplication_stats = [r.result() for r in jobs]        
     
     d = defaultdict(dict)
-    for l in (coverage_stats, duplication_stats):
+    for l in (coverage_stats, mapped_duplication_stats):
         for elem in l:
             d[elem['sample']].update(elem)
-    nqc_stats = d.values()
+    mapdup_bg_stats = d.values()
+    
+    e = defaultdict(dict)
+    for l in (mapdup_bg_stats, read_duplication_stats):
+        for elem in l:
+            e[elem['sample']].update(elem)
+    nqc_stats = e.values()
     
     sorted_nqc_stats = sorted(nqc_stats, key=itemgetter('sample'))
 
     nqc_stats_file = open(args.output + '/nqc_stats.txt', 'w')
     for stat in sorted_nqc_stats:
-        nqc_stats_file.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % \
+        nqc_stats_file.write("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" % \
                         (stat['sample'], \
                          stat['sample_id'], \
                          stat['gap_std'], stat['log_gap_std'], \
@@ -172,7 +204,7 @@ def main():
                          stat['unpaired_reads'], stat['paired_reads'], stat['secondary_reads'], \
                          stat['unmapped_reads'], stat['unpaired_read_dups'], \
                          stat['paired_read_dups'], stat['read_pair_optical_dups'], \
-                         stat['percent_dup']))
+                         stat['percent_dup'], stat['percent_gc'], stat['total_sequences'], stat['percent_deduplicated']))
     nqc_stats_file.close()
     
     #sample = [d['sample'] for d in sorted_nqc_stats]
@@ -185,8 +217,11 @@ def main():
     #    
     #df["id"] = identifier
     
-    df = pd.DataFrame(sorted_nqc_stats)
-    df['log2_unique_reads'] = np.log2(df['unpaired_reads'] - df['unpaired_read_dups'])
+    df = pd.DataFrame(sorted_nqc_stats).replace([np.inf, -np.inf], np.nan).fillna(0)
+    print(list(df.columns.values))
+    df['log2_unique_mapped_reads'] = np.log2(df['unpaired_reads'] - df['unpaired_read_dups'])
+    df['percent_raw_read_dup'] = 1 - df['percent_deduplicated']
+    df['log2_unique_raw_reads'] = np.log2(df['total_sequences'] * df['percent_deduplicated'])
     df['log2_unmapped_reads'] = np.log2(df['unmapped_reads'])
     
     output_file(args.output + '/nqc_plot.html')
@@ -203,43 +238,71 @@ def main():
     # create a new plot and add a renderer
     s1 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
     s1.xaxis.axis_label = 'Log\u2082 Number of Unique Reads'
-    s1.yaxis.axis_label = 'Log\u2082 Gap Standard Deviation'
-    s1.circle('log2_unique_reads', 'log_gap_std', size=6, hover_color="firebrick",
+    s1.yaxis.axis_label = 'Log\u2082 Gap Standard Deviation'       
+    s1.circle('log2_unique_mapped_reads', 'log_gap_std', size=6, hover_color="firebrick", legend='sample_id',
                 color=factor_cmap('sample_id', pal, SAMPLE),
                 source=source)
+    
     s2 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
     s2.xaxis.axis_label = 'Log\u2082 Number of Unique Reads'
-    s2.yaxis.axis_label = "Log\u2082 Gap Variance"
-    s2.circle('log2_unique_reads', 'log_gap_var', size=6, hover_color="firebrick",
+    s2.yaxis.axis_label = "Log\u2082 Gap Variance"       
+    s2.circle('log2_unique_mapped_reads', 'log_gap_var', size=6, hover_color="firebrick", legend='sample_id',
                   color=factor_cmap('sample_id', pal, SAMPLE),
                   source=source)
+    
     s3 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
     s3.xaxis.axis_label = 'Log\u2082 Number of Unique Reads'
-    s3.yaxis.axis_label = "Log\u2082 Gap Median Size"
-    s3.circle('log2_unique_reads', 'log_gap_median_size', size=6, hover_color="firebrick",
-                    color=factor_cmap('sample_id', pal, SAMPLE),
-                    source=source)
-    s4 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
-    s4.xaxis.axis_label = 'Log\u2082 Unmapped Reads'
-    s4.yaxis.axis_label = "Log\u2082 Coverage Variance"
-    s4.circle('log2_unmapped_reads', 'log_coverage_variance', size=6, hover_color="firebrick",
-                    color=factor_cmap('sample_id', pal, SAMPLE),
-                    source=source)
-    s5 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
-    s5.xaxis.axis_label = 'Log\u2082 Number of Unique Reads'
-    s5.yaxis.axis_label = "Log\u2082 Coverage Variance"
-    s5.circle('log2_unique_reads', 'log_coverage_variance', size=6, hover_color="firebrick",
-                    color=factor_cmap('sample_id', pal, SAMPLE),
-                    source=source)
-    s6 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
-    s6.xaxis.axis_label = 'Log\u2082 Number of Unique Reads'
-    s6.yaxis.axis_label = "Log\u2082 Number of 1bp Gaps"
-    s6.circle('log2_unique_reads', 'log_number_of_1bp_gaps', size=6, hover_color="firebrick", legend='sample_id',
+    s3.yaxis.axis_label = "Log\u2082 Gap Median Size" 
+    s3.circle('log2_unique_mapped_reads', 'log_gap_median_size', size=6, hover_color="firebrick", legend='sample_id',
                     color=factor_cmap('sample_id', pal, SAMPLE),
                     source=source)
     
+    s4 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
+    s4.xaxis.axis_label = 'Log\u2082 Unmapped Reads'
+    s4.yaxis.axis_label = "Log\u2082 Coverage Variance"
+    s4.circle('log2_unmapped_reads', 'log_coverage_variance', size=6, hover_color="firebrick", legend='sample_id',
+                    color=factor_cmap('sample_id', pal, SAMPLE),
+                    source=source)
+    
+    s5 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
+    s5.xaxis.axis_label = 'Log\u2082 Number of Unique Reads'
+    s5.yaxis.axis_label = "Log\u2082 Coverage Variance"
+    s5.circle('log2_unique_mapped_reads', 'log_coverage_variance', size=6, hover_color="firebrick", legend='sample_id',
+                    color=factor_cmap('sample_id', pal, SAMPLE),
+                    source=source)
+    
+    s6 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
+    s6.xaxis.axis_label = 'Log\u2082 Number of Unique Reads'
+    s6.yaxis.axis_label = "Log\u2082 Number of 1bp Gaps"      
+    s6.circle('log2_unique_raw_reads', 'log_number_of_1bp_gaps', size=6, hover_color="firebrick", legend='sample_id',
+                    color=factor_cmap('sample_id', pal, SAMPLE),
+                    source=source)
+    s6.legend.location = "bottom_right"
+    
+    s7 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
+    s7.xaxis.axis_label = 'Log\u2082 Number of Unique Raw Reads'
+    s7.yaxis.axis_label = "Log\u2082 Gap Median Size"      
+    s7.circle('log2_unique_raw_reads', 'log_gap_median_size', size=6, hover_color="firebrick", legend='sample_id',
+                    color=factor_cmap('sample_id', pal, SAMPLE),
+                    source=source)
+    
+    s8 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
+    s8.xaxis.axis_label = 'Log\u2082 Number of Unique Raw Reads'
+    s8.yaxis.axis_label = "Log\u2082 Coverage Variance" 
+    s8.circle('log2_unique_raw_reads', 'log_coverage_variance', size=6, hover_color="firebrick", legend='sample_id',
+                    color=factor_cmap('sample_id', pal, SAMPLE),
+                    source=source)
+    
+    s9 = figure(tools=TOOLS, plot_width=600, plot_height=600, title=None)
+    s9.xaxis.axis_label = 'Log\u2082 Number of Unique Raw Reads'
+    s9.yaxis.axis_label = "Log\u2082 Number of Unique Mapped Reads"
+    s9.circle('log2_unique_raw_reads', 'log2_unique_mapped_reads', size=6, hover_color="firebrick", legend='sample_id',
+                    color=factor_cmap('sample_id', pal, SAMPLE),
+                    source=source)
+    s9.legend.location = "bottom_right"
+    
     # make a grid
-    grid = gridplot([s1, s2, s3, s4, s5, s6], ncols=3, plot_width=600, plot_height=600)
+    grid = gridplot([s1, s2, s3, s4, s5, s6, s7, s8, s9], ncols=3, plot_width=600, plot_height=600)
     save(grid, browser=args.output + 'nqc_plot.html')
     if args.save_png:
         bk_io.export_png(grid, filename='./nqc_plot.png')
