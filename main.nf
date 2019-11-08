@@ -13,30 +13,28 @@
 ========================================================================================
 Pipeline steps:
     1. Pre-processing sra/fastq
-        1a. SRA tools -- fasterq-dump sra to generate fastq file
-        1b. FastQC (pre-trim) -- perform pre-trim FastQC on fastq files
-    2. Trimming
-        2a. BBDuk -- trim fastq files for quality and adapters
-        2b. FastQC (post-trim) -- perform post-trim FastQC on fastq files (ensure trimming performs as expected)
-    3. Mapping w/ HISAT2 -- map to genome reference file
-    4. SAMtools -- convert SAM file to BAM, index BAM, flagstat BAM
-    5. Quality control
-        5a. preseq -- estimate library complexity
-        5b. RSeQC -- calculate genomic coverage relative to a reference file, infer experiement (single- v. paired-end), read duplication
-        5c. Pileup.sh : BBMap Suite -- genomic coverage by chromosome, GC content, pos/neg reads, intron/exon ratio
-    6. Coverage files
-        6d. BEDTools : non-normalized & nornmalized bedgraphs
-        6b. BEDTools and kentUtils : 5' bigwigs for dREG & normalized bigwigs for genome browser
-        
-    7. Normalizing bigwigs for Genome Browser use
-    8. IGV Tools : bedGraph --> tdf
-    9. MultiQC : generate QC report for pipeline
-    
-    10. FStitch : Segment data into active and inactive transcriptional regions and annotate bidirectionals
-    
-    11. Tfit/PrelimTfit : Annotate and model sites of RNAPII activity (bidirectional signal)
-    
-    12. DAStk : Run motif displacement analysis
+        SRA tools -- fasterq-dump sra to generate fastq file
+        FastQC (pre-trim) -- perform pre-trim FastQC on fastq files
+    2. Trimming & Mapping
+        BBDuk -- trim fastq files for quality and adapters
+        FastQC (post-trim) -- perform post-trim FastQC on fastq files (ensure trimming performs as expected)
+        HISAT2 -- Map reads to a reference genome
+    3. SAMtools -- convert SAM file to BAM, index BAM, flagstat BAM, BAM --> CRAM, index CRAM
+    4. Quality control
+        preseq -- estimate library complexity
+        RSeQC -- calculate genomic coverage relative to a reference file, infer experiement (single- v. paired-end), read duplication
+        Pileup.sh : BBMap Suite -- genomic coverage by chromosome, GC content, pos/neg reads, intron/exon ratio
+        Picard -- Mark duplicates, GC content
+        NQC -- Perform nascent-specific quality control analysis
+    5. Mapping Visualization
+        BEDTools : non-normalized & nornmalized bedgraphs
+        BEDTools and kentUtils : 5' bigwigs for dREG & normalized bigwigs for genome browser     
+        IGV Tools : bedGraph --> tdf
+    6. MultiQC : generate QC report for pipeline
+    7. FStitch : Segment data into active and inactive transcriptional regions and annotate bidirectionals
+    8. Tfit/PrelimTfit : Annotate and model sites of RNAPII activity (bidirectional signal)
+    9. DAStk : Run motif displacement analysis
+    10. Read Counting : BEDTools multicov to count reads over genes
 */
 
 
@@ -62,6 +60,7 @@ def helpMessage() {
     Input File options:
         --singleEnd                    Specifies that the input files are not paired reads (default is paired-end).
         --flip                         Reverse complements each strand. Necessary for some library preps.
+        --flipR2                       Reverse complements R2 only.        
         
     Strandedness:
         --forwardStranded              The library is forward stranded
@@ -87,6 +86,7 @@ def helpMessage() {
         --nqc                          Run Nascent QC.
         
     Analysis Options:
+        --noTrim                       Skip trimming and map only. Will also skip flip/flipR2 (any BBMap) steps.
         --counts                       Run BEDTools mutlicov for each sample to obtain gene counts over the RefSeq annotation.
         --fstitch                      Run FStitch. If used, you must also specify FS_path and FS_train params.
         --tfit                         Run Tfit. If used, you must also specify the Tfit_path parameter.
@@ -120,7 +120,6 @@ params.merge_counts = "$baseDir/bin/merge_counts.py"
 params.workdir = "./nextflowTemp"
 multiqc_config = file(params.multiqc_config)
 output_docs = file("$baseDir/docs/output.md")
-params.picard_path = "/Users/magr0763/picard/build/libs/picard.jar"
 params.extract_fastqc_stats = "$baseDir/bin/extract_fastqc_stats.sh"
 
 // Validate inputs
@@ -134,6 +133,10 @@ if ( params.chrom_sizes ){
     chrom_sizes = file(params.chrom_sizes)
     if( !chrom_sizes.exists() ) exit 1, "Genome chrom sizes file not found: ${params.chrom_sizes}"
  }
+
+if ( params.picard_path ){
+    picard_path = file(params.picard_path)
+}
 
 if ( params.hisat2_indices ){
     hisat2_indices = file("${params.hisat2_indices}")
@@ -239,6 +242,7 @@ summary['Save bedGraph']    = params.savebg ? 'YES' : 'NO'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
+summary['Reverse Comp R2']  = params.flipR2 ? 'YES' : 'NO'
 summary['Run Multicov']     = params.counts ? 'YES' : 'NO'
 summary['Nascent QC']       = params.nqc ? 'YES' : 'NO'
 summary['Run FastQC']       = params.skipFastQC ? 'NO' : 'YES'
@@ -323,7 +327,7 @@ process get_software_versions {
 }
 
 /*
- * Step 1a -- get fastq files from downloaded sras
+ * Step 1 -- get fastq files from downloaded sras
  */
 
 process sra_dump {
@@ -377,7 +381,7 @@ process sra_dump {
 }
 
 /*
- * STEP 1b - FastQC
+ * STEP 1+ - FastQC
  */
 
 process fastQC {
@@ -389,6 +393,7 @@ process fastQC {
              if (filename.indexOf("zip") > 0)     "qc/fastqc/zips/$filename"
         else if (filename.indexOf("html") > 0)    "qc/fastqc/$filename"
         else if (filename.indexOf("txt") > 0)     "qc/fastqc_stats/$filename"
+        else null            
     }
     
     when:
@@ -415,7 +420,7 @@ process fastQC {
 
 
 /*
- * STEP 2a - Trimming
+ * STEP 2 - Trimming & Mapping
  */
 
 process bbduk_hisat2 {
@@ -521,8 +526,45 @@ process bbduk_hisat2 {
                 > ${prefix_se}.sam \
                 2> ${prefix_se}.hisat2_mapstats.txt                  
         """
-    }
-        else if (!params.singleEnd) {
+    } else if (!params.singleEnd && params.flipR2) {
+                """
+        echo ${prefix_pe}
+
+        reformat.sh -Xmx40g \
+                t=32 \
+                in=${reads[0]} \
+                in2=${reads[1]} \
+                out=${prefix_pe}.flip.fastq.gz \
+                out2=${prefix_pe}.flip.fastq.gz \
+                rcompmate=t
+
+        bbduk.sh -Xmx40g \
+                t=32 \
+                in=${prefix_pe}.flip.fastq.gz \
+                in2=${prefix_pe}.flip.fastq.gz \
+                out=${prefix_pe}.flip.trim.fastq.gz \
+                out2=${prefix_pe}.flip.trim.fastq.gz \
+                ref=${bbmap_adapters} \
+                ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                nullifybrokenquality=t \
+                maq=10 minlen=25 \
+                tpe tbo \
+                literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                stats=${prefix_pe}.trimstats.txt \
+                refstats=${prefix_pe}.refstats.txt
+                
+        hisat2 -p 32 \
+               --very-sensitive \
+               --no-spliced-alignment \
+               -x ${indices_path} \
+               -1 ${prefix_pe}_1.flip.trim.fastq.gz \
+               -2 ${prefix_pe}_2.flip.trim.fastq.gz \
+               $rnastrandness \
+               --new-summary \
+               > ${prefix_pe}.sam \
+               2> ${prefix_pe}.hisat2_mapstats.txt                   
+        """
+    } else if (!params.singleEnd) {
         """
         echo ${prefix_pe}
 
@@ -581,7 +623,7 @@ process bbduk_hisat2 {
 
 
 /*
- * STEP 2b - Trimmed FastQC
+ * STEP 2+ - Trimmed FastQC
  */
 
 process fastQC_trim {
@@ -592,6 +634,7 @@ process fastQC_trim {
     saveAs: {filename ->
              if (filename.indexOf("zip") > 0)   "qc/fastqc/zips/$filename"
         else if (filename.indexOf("html") > 0)  "qc/fastqc/$filename"
+        else null            
     }
     
     when:
@@ -613,7 +656,7 @@ process fastQC_trim {
 
 
 /*
- * STEP 3 - Map reads to reference genome
+ * STEP 2+ - Map reads to reference genome w/o trimming
  */
 
 if (params.noTrim) {
@@ -680,7 +723,7 @@ if (params.noTrim) {
 }
 
 /*
- * STEP 4 - Convert to BAM format and sort
+ * STEP 2 - Convert to BAM/CRAM format and sort
  */
 
 process samtools {
@@ -695,6 +738,7 @@ process samtools {
         else if (filename.indexOf("millionsmapped") > 0)                    "qc/mapstats/$filename"
         else if (filename.indexOf("sorted.cram") > 0)                       "mapped/crams/$filename"
         else if (filename.indexOf("sorted.cram.crai") > 0)                  "mapped/crams/$filename"
+        else null            
     }
 
     input:
@@ -747,7 +791,7 @@ cram_index_ch
     .into { cram_index_for_counts; cram_index_dreg_prep} 
 
 /*
- *STEP 5+ - Picard tools
+ *STEP 4+ - Picard tools
  */
 
 process picard {
@@ -760,7 +804,8 @@ process picard {
              if (filename.indexOf("marked_dup_metrics.txt") > 0)            "qc/picard/dups/$filename"
         else if (filename.indexOf("gc_bias_metrics.pdf") > 0)               "qc/picard/gc_bias/$filename"
         else if (filename.indexOf("gc_bias_metrics.txt") > 0)               "qc/picard/gc_bias/$filename"
-        else if (filename.indexOf("summary_metrics.txt") > 0)               "qc/picard/gc_bias/$filename"            
+        else if (filename.indexOf("summary_metrics.txt") > 0)               "qc/picard/gc_bias/$filename"
+        else null            
     }
     
     when:
@@ -790,7 +835,7 @@ process picard {
 }
 
 /*
- *STEP 5a - Plot the estimated complexity of a sample, and estimate future yields
+ *STEP 4+ - Plot the estimated complexity of a sample, and estimate future yields
  *         for complexity if the sample is sequenced at higher read depths.
  */
 
@@ -822,7 +867,7 @@ process preseq {
 
 
 /*
- *STEP 5b - Analyze read distributions using RSeQC
+ *STEP 4+ - Analyze read distributions using RSeQC
  */
 
 process rseqc {
@@ -842,7 +887,7 @@ process rseqc {
             else if (filename.indexOf("RPKM_saturation.rawCount.xls") > 0)      "RPKM_saturation/counts/$filename"
             else if (filename.indexOf("RPKM_saturation.saturation.pdf") > 0)    "RPKM_saturation/$filename"
             else if (filename.indexOf("RPKM_saturation.saturation.r") > 0)      "RPKM_saturation/rscripts/$filename"
-            else filename
+            else null
         }
     
     when:
@@ -857,9 +902,6 @@ process rseqc {
 
     script:
     """
-    
-    export PATH=~/.local/bin:$PATH
-    
     read_distribution.py -i ${bam_file} \
                          -r ${genome_refseq} \
                          > ${name}.read_dist.txt
@@ -874,7 +916,7 @@ process rseqc {
 
 
 /*
- *STEP 5c - Analyze coverage using pileup.sh
+ *STEP 4+ - Analyze coverage using pileup.sh
  */
 
 process pileup {
@@ -902,7 +944,7 @@ process pileup {
  }
 
 /*
- *STEP 6a - Create non-normalzied bedGraphs for analysis using FStitch/Tfit
+ *STEP 5 - Create non-normalzied bedGraphs for analysis using FStitch/Tfit
  */
 
 process bedgraphs {
@@ -931,14 +973,12 @@ process bedgraphs {
     genomeCoverageBed \
         -bg \
         -strand + \
-        -pc \
         -g ${chrom_sizes} \
         -ibam ${bam_file} \
         > ${name}.pos.bedGraph
     genomeCoverageBed \
         -bg \
         -strand - \
-        -pc \
         -g ${chrom_sizes} \
         -ibam ${bam_file} \
         | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
@@ -1056,7 +1096,7 @@ process bedgraphs {
  }
 
 /*
- *STEP 6b - Create bedGraphs and bigwigs for dREG
+ *STEP 5+ - Create bedGraphs and bigwigs for dREG
  */
 
 process dreg_prep {
@@ -1120,7 +1160,7 @@ process dreg_prep {
  }
 
 /*
- *STEP 7 - Normalize bigWigs by millions of reads mapped for visualization on nascent2.0
+ *STEP 5+ - Normalize bigWigs by millions of reads mapped for visualization
  */
 
 process normalized_bigwigs {
@@ -1148,7 +1188,7 @@ process normalized_bigwigs {
 }
 
 /*
- *STEP 8 - IGV Tools : generate tdfs for optimal visualization in Integrative Genomics Viewer (IGV)
+ *STEP 5+ - IGV Tools : generate tdfs for optimal visualization in Integrative Genomics Viewer (IGV)
  */
 
 process igvtools {
@@ -1176,12 +1216,9 @@ process igvtools {
 
 
 /*
- * STEP 9 - MultiQC
+ * STEP 6 - MultiQC
  */
 
-/*
- * STEP 9 - MultiQC
- */
 process multiQC {
     validExitStatus 0,1,143
     errorStrategy 'ignore'
@@ -1217,7 +1254,7 @@ process multiQC {
 }
 
 /*
- * STEP 10 - FStitch
+ * STEP 7 - FStitch
  */
 
 process FStitch {
@@ -1279,7 +1316,7 @@ process FStitch {
 }
 
 /*
- * STEP 11 - Tfit
+ * STEP 8 - Tfit
  */
 
 process tfit {
@@ -1363,7 +1400,7 @@ process prelimtfit {
 }
 
 /*
- * STEP 12 - DAStk -- MD scores
+ * STEP 9 - DAStk -- MD scores
  */
 
 process DAStk {
@@ -1397,7 +1434,7 @@ process DAStk {
 }
 
 /*
- * STEP 13 - Counts -- BEDTools multicov
+ * STEP 10 - Counts -- BEDTools multicov
  */
 
 process multicov {
@@ -1430,7 +1467,7 @@ process multicov {
 }
 
 /*
- * STEP 14 - Merge Counts
+ * STEP 10+ - Merge Counts
  */
 
 process merge_multicov {
@@ -1457,7 +1494,7 @@ process merge_multicov {
 }
 
 /*
- * STEP 15 - Nascent QC
+ * STEP 4+ - Nascent QC
  */
 
 process nqc {

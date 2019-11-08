@@ -115,9 +115,11 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 | --skipMultiQC   |             | Skip running MultiQC.                                   |
 | --skipRSeQC     |             | Skip running RSeQC.                                     |
 | --skippreseq    |             | Skip running preseq.                                    |
+| --skippicard    |             | Skip running picard.                                    |
 | --skipFastQC    |             | Skip running FastQC                                     |
 | --skippileup    |             | Skip running pileup.                                    |
 | --skipAllQC     |             | Skip running all QC (does not include mapstats).        |
+| --nqc           |             | Run Nascent QC.                                         |
 
 **Analysis Options**
 
