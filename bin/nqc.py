@@ -107,7 +107,7 @@ def get_read_complexity_data(dup_file):
     sample_name = os.path.splitext(os.path.basename(dup_file))[0]
     if sample_name.endswith('.fastqc_stats'):
         sample_name = sample_name[:-13]    
-    read_dup_file_df = pd.read_csv(dup_file, comment='#', sep='\t', skiprows=[0])
+    read_dup_file_df = pd.read_csv(dup_file, comment='#', sep='\t')
     
     print("Done with sample %s read duplication file." % sample_name)
     

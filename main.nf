@@ -1474,7 +1474,7 @@ process merge_multicov {
     memory '10 GB'
     time '1h'
     validExitStatus 0
-    publishDir "${params.outdir}/counts", mode: 'copy', pattern: "merged_counts.bed"
+    publishDir "${params.outdir}/counts", mode: 'copy', pattern: "merged_gene_counts.bed"
     
     when:
     params.counts
@@ -1489,7 +1489,7 @@ process merge_multicov {
         """
         python3 ${params.merge_counts} \\
             -b './counts/' \\
-            -o merged_counts.bed
+            -o merged_gene_counts.bed
         """
 }
 
