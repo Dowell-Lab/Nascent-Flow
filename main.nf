@@ -73,7 +73,6 @@ def helpMessage() {
         --saveTrim                     Saves compressed trimmed fastq reads.
         --saveBAM                      Save BAM files. Only CRAM files will be saved with this option.
         --saveAll                      Saves all compressed fastq reads.
-        --savebw                       Saves pos/neg bigwig files for UCSC genome browser.
         
     QC Options:
         --skipMultiQC                  Skip running MultiQC.
@@ -237,13 +236,12 @@ summary['Data Type']        = params.singleEnd ? 'Single-End' : 'Paired-End'
 summary['Strandedness']     = (params.unStranded ? 'None' : params.forwardStranded ? 'Forward' : params.reverseStranded ? 'Reverse' : 'None')
 summary['Save All fastq']   = params.saveAllfq ? 'YES' : 'NO'
 summary['Save BAM']         = params.saveBAM ? 'YES' : 'NO'
-summary['Save BigWig']      = params.savebw ? 'YES' : 'NO'
-summary['Save bedGraph']    = params.savebg ? 'YES' : 'NO'
 summary['Save fastq']       = params.savefq ? 'YES' : 'NO'
 summary['Save Trimmed']     = params.saveTrim ? 'YES' : 'NO'
 summary['Reverse Comp']     = params.flip ? 'YES' : 'NO'
 summary['Reverse Comp R2']  = params.flipR2 ? 'YES' : 'NO'
 summary['Run Multicov']     = params.counts ? 'YES' : 'NO'
+summary['Skip Trimming']    = params.noTrim ? 'NO' : 'YES'
 summary['Nascent QC']       = params.nqc ? 'YES' : 'NO'
 summary['Run FastQC']       = params.skipFastQC ? 'NO' : 'YES'
 summary['Run preseq']       = params.skippreseq ? 'NO' : 'YES'
@@ -723,7 +721,7 @@ if (params.noTrim) {
 }
 
 /*
- * STEP 2 - Convert to BAM/CRAM format and sort
+ * STEP 3 - Convert to BAM/CRAM format and sort
  */
 
 process samtools {
@@ -1168,9 +1166,6 @@ process normalized_bigwigs {
     tag "$name"
     memory '10 GB'
     publishDir "${params.outdir}/mapped/rcc_bigwig", mode: 'copy'
-    
-    when:
-    params.savebw
 
     input:
     set val(name), file(neg_bedgraph) from bedgraph_bigwig_neg
@@ -1440,7 +1435,7 @@ process DAStk {
 process multicov {
     tag "$name"
     memory '10 GB'
-    time '2h'
+    time '6h'
     validExitStatus 0
     publishDir "${params.outdir}/counts", mode: 'copy', pattern: "*.bed"
     
