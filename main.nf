@@ -314,7 +314,7 @@ process get_software_versions {
     igvtools version > v_igv-tools.txt
     $fstitch_path train --version > v_fstitch.txt
     $tfit_path model --version > v_tfit.txt
-    process_atac --version > v_dastk.txt
+    #process_atac --version > v_dastk.txt
     infer_experiment.py --version > v_rseqc.txt
     multiqc --version > v_multiqc.txt
     for X in `ls *.txt`; do
@@ -348,7 +348,12 @@ process sra_dump {
 
     script:
     prefix = reads.baseName
-    if (!params.threadfqdump) {
+    if (!params.threadfqdump && !params.singleEnd) {
+        """
+        echo ${prefix}
+        fastq-dump --split-3 ${reads} --gzip
+        """
+    } else if (!params.threadfqdump) {
         """
         echo ${prefix}
         fastq-dump ${reads} --gzip
@@ -361,11 +366,6 @@ process sra_dump {
             --gzip \
             --split-3 \
             --sra-id ${reads}
-        """
-    } else if (!params.threadfqdump && !params.singleEnd) {
-        """
-        echo ${prefix}
-        fastq-dump --split-3 ${reads} --gzip
         """
     } else {
         """
@@ -476,7 +476,7 @@ process bbduk_hisat2 {
                   out=${prefix_pe}_1.flip.trim.fastq.gz \
                   out2=${prefix_pe}_2.flip.trim.fastq.gz \
                   ref=${bbmap_adapters} \
-                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
@@ -508,7 +508,7 @@ process bbduk_hisat2 {
                   in=${prefix_se}.flip.fastq.gz \
                   out=${prefix_se}.flip.trim.fastq.gz \
                   ref=${bbmap_adapters} \
-                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${prefix_se}.trimstats.txt \
@@ -543,7 +543,7 @@ process bbduk_hisat2 {
                 out=${prefix_pe}.flip.trim.fastq.gz \
                 out2=${prefix_pe}.flip.trim.fastq.gz \
                 ref=${bbmap_adapters} \
-                ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
                 nullifybrokenquality=t \
                 maq=10 minlen=25 \
                 tpe tbo \
@@ -573,7 +573,7 @@ process bbduk_hisat2 {
                   out=${prefix_pe}_1.trim.fastq.gz \
                   out2=${prefix_pe}_2.trim.fastq.gz \
                   ref=${bbmap_adapters} \
-                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   tpe tbo \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
@@ -600,7 +600,7 @@ process bbduk_hisat2 {
                   in=${reads} \
                   out=${prefix_se}.trim.fastq.gz \
                   ref=${bbmap_adapters} \
-                  ktrim=r qtrim=10 k=23 mink=11 hdist=1 \
+                  ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${prefix_se}.trimstats.txt \
@@ -818,12 +818,12 @@ process picard {
     
     script:
     """
-    java -jar -Xmx20g ${params.picard_path} MarkDuplicates \
+    java -jar -Xmx20g ${picard_path} MarkDuplicates \
          I=${bam_file} \
          O=${name}.marked_duplicates.bam \
          M=${name}.marked_dup_metrics.txt             
          
-    java -jar -Xmx20g ${params.picard_path} CollectGcBiasMetrics \
+    java -jar -Xmx20g ${picard_path} CollectGcBiasMetrics \
           I=${bam_file} \
           O=${name}.gc_bias_metrics.txt \
           CHART=${name}.gc_bias_metrics.pdf \
@@ -1214,39 +1214,39 @@ process igvtools {
  * STEP 6 - MultiQC
  */
 
-process multiQC {
-    validExitStatus 0,1,143
-    errorStrategy 'ignore'
-    publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
-    publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "*_data"
-
-    when:
-    !params.skipMultiQC && !params.skipAllQC
-
-    input:
-    file multiqc_config
-    file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
-    file ('qc/fastqc/*') from trimmed_fastqc_results.collect()
-    file ('qc/trimstats/*') from trim_stats.collect()
-    file ('qc/mapstats/*') from bam_flagstat.collect()
-    file ('qc/rseqc/*') from rseqc_results.collect()
-    file ('qc/preseq/*') from preseq_results.collect()
-    file ('software_versions/*') from software_versions_yaml
-    file ('qc/hisat2_mapstats/*') from hisat2_mapstats.collect()
-    file ('qc/picard/*') from picard_stats_multiqc.collect()    
-
-    output:
-    file "*multiqc_report.html" into multiqc_report
-    file "*_data" into multiqc_report_files
-
-    script:
-    rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
-    rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
-
-    """
-    multiqc . -f $rtitle $rfilename --config $multiqc_config
-    """
-}
+// process multiQC {
+//     validExitStatus 0,1,143
+//     errorStrategy 'ignore'
+//     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
+//     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "*_data"
+// 
+//     when:
+//     !params.skipMultiQC && !params.skipAllQC
+// 
+//     input:
+//     file multiqc_config
+//     file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
+//     file ('qc/fastqc/*') from trimmed_fastqc_results.collect()
+//     file ('qc/trimstats/*') from trim_stats.collect()
+//     file ('qc/mapstats/*') from bam_flagstat.collect()
+//     file ('qc/rseqc/*') from rseqc_results.collect()
+//     file ('qc/preseq/*') from preseq_results.collect()
+//     file ('software_versions/*') from software_versions_yaml
+//     file ('qc/hisat2_mapstats/*') from hisat2_mapstats.collect()
+//     file ('qc/picard/*') from picard_stats_multiqc.collect()    
+// 
+//     output:
+//     file "*multiqc_report.html" into multiqc_report
+//     file "*_data" into multiqc_report_files
+// 
+//     script:
+//     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
+//     rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
+// 
+//     """
+//     multiqc . -f $rtitle $rfilename --config $multiqc_config
+//     """
+// }
 
 /*
  * STEP 7 - FStitch
@@ -1398,35 +1398,35 @@ process prelimtfit {
  * STEP 9 - DAStk -- MD scores
  */
 
-process DAStk {
-    tag "$name"
-    memory '20 GB'
-    time '2h'
-    cpus 16
-    validExitStatus 0
-    publishDir "${params.outdir}/dastk", mode: 'copy', pattern: "*.txt"
-    
-    when:
-    params.dastk && params.tfit
-    
-    input:
-    set val(name), file (bed) from tfit_bed_out
-    val(motif_path) from motif_path
-    val(genome_id) from genome_id
-       
-    output:
-    file ("*.txt") into dastk_bed_out
-        
-    script:
-        """
-        process_atac \
-            --threads 16 \
-            --genome ${genome_id} \
-            --atac-peaks ${bed} \
-            --motif-path ${motif_path} \
-            --output .
-        """
-}
+// process DAStk {
+//     tag "$name"
+//     memory '20 GB'
+//     time '2h'
+//     cpus 16
+//     validExitStatus 0
+//     publishDir "${params.outdir}/dastk", mode: 'copy', pattern: "*.txt"
+//     
+//     when:
+//     params.dastk && params.tfit
+//     
+//     input:
+//     set val(name), file (bed) from tfit_bed_out
+//     val(motif_path) from motif_path
+//     val(genome_id) from genome_id
+//        
+//     output:
+//     file ("*.txt") into dastk_bed_out
+//         
+//     script:
+//         """
+//         process_atac \
+//             --threads 16 \
+//             --genome ${genome_id} \
+//             --atac-peaks ${bed} \
+//             --motif-path ${motif_path} \
+//             --output .
+//         """
+// }
 
 /*
  * STEP 10 - Counts -- BEDTools multicov
