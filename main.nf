@@ -726,7 +726,7 @@ if (params.noTrim) {
 
 process samtools {
     tag "$name"
-    memory '40 GB'
+    memory '60 GB'
     cpus 16
     publishDir "${params.outdir}" , mode: 'copy',
     saveAs: {filename ->
@@ -902,7 +902,7 @@ process rseqc {
     """
     read_distribution.py -i ${bam_file} \
                          -r ${genome_refseq} \
-                         > ${name}.read_dist.txt
+                         > ${name}.read_distribution.txt
     read_duplication.py -i ${bam_file} \
                         -o ${name}.read_duplication
     infer_experiment.py -i ${bam_file} \
@@ -1214,39 +1214,39 @@ process igvtools {
  * STEP 6 - MultiQC
  */
 
-// process multiQC {
-//     validExitStatus 0,1,143
-//     errorStrategy 'ignore'
-//     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
-//     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "*_data"
-// 
-//     when:
-//     !params.skipMultiQC && !params.skipAllQC
-// 
-//     input:
-//     file multiqc_config
-//     file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
-//     file ('qc/fastqc/*') from trimmed_fastqc_results.collect()
-//     file ('qc/trimstats/*') from trim_stats.collect()
-//     file ('qc/mapstats/*') from bam_flagstat.collect()
-//     file ('qc/rseqc/*') from rseqc_results.collect()
-//     file ('qc/preseq/*') from preseq_results.collect()
-//     file ('software_versions/*') from software_versions_yaml
-//     file ('qc/hisat2_mapstats/*') from hisat2_mapstats.collect()
-//     file ('qc/picard/*') from picard_stats_multiqc.collect()    
-// 
-//     output:
-//     file "*multiqc_report.html" into multiqc_report
-//     file "*_data" into multiqc_report_files
-// 
-//     script:
-//     rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
-//     rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
-// 
-//     """
-//     multiqc . -f $rtitle $rfilename --config $multiqc_config
-//     """
-// }
+process multiQC {
+    validExitStatus 0,1,143
+    errorStrategy 'ignore'
+    publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
+    publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "*_data"
+
+    when:
+    !params.skipMultiQC && !params.skipAllQC
+
+    input:
+    file multiqc_config
+    file (fastqc:'qc/fastqc/*') from fastqc_results.collect()
+    file ('qc/fastqc/*') from trimmed_fastqc_results.collect()
+    file ('qc/trimstats/*') from trim_stats.collect()
+    file ('qc/mapstats/*') from bam_flagstat.collect()
+    file ('qc/rseqc/*') from rseqc_results.collect()
+    file ('qc/preseq/*') from preseq_results.collect()
+    file ('software_versions/*') from software_versions_yaml
+    file ('qc/hisat2_mapstats/*') from hisat2_mapstats.collect()
+    file ('qc/picard/*') from picard_stats_multiqc.collect()    
+
+    output:
+    file "*multiqc_report.html" into multiqc_report
+    file "*_data" into multiqc_report_files
+
+    script:
+    rtitle = custom_runName ? "--title \"$custom_runName\"" : ''
+    rfilename = custom_runName ? "--filename " + custom_runName.replaceAll('\\W','_').replaceAll('_+','_') + "_multiqc_report" : ''
+
+    """
+    multiqc "${params.outdir}"/qc/ -f $rtitle $rfilename --config $multiqc_config
+    """
+}
 
 /*
  * STEP 7 - FStitch
