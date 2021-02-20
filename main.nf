@@ -461,20 +461,13 @@ process bbduk_hisat2 {
     if (!params.singleEnd && params.flip) {
         """
         echo ${name}         
-        reformat.sh -Xmx40g \
-                t=32 \
-                in=${reads[0]} \
-                in2=${reads[1]} \
-                out=${prefix_pe}_1.flip.fastq.gz \
-                out2=${prefix_pe}_2.flip.fastq.gz \
-                rcomp=t
                 
         bbduk.sh -Xmx40g \
                   t=32 \
-                  in=${prefix_pe}_1.flip.fastq.gz \
-                  in2=${prefix_pe}_2.flip.fastq.gz \
-                  out=${prefix_pe}_1.flip.trim.fastq.gz \
-                  out2=${prefix_pe}_2.flip.trim.fastq.gz \
+                  in=${reads[0]} \
+                  in2=${reads[1]} \
+                  out=${prefix_pe}_1.trim.fastq.gz \
+                  out2=${prefix_pe}_2.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
@@ -482,14 +475,22 @@ process bbduk_hisat2 {
                   literal=AAAAAAAAAAAAAAAAAAAAAAA \
                   stats=${prefix_pe}.trimstats.txt \
                   refstats=${prefix_pe}.refstats.txt
-                  
+
+        reformat.sh -Xmx40g \
+                t=32 \
+                in=${prefix_pe}_1.trim.fastq.gz \
+                in2=${prefix_pe}_2.trim.fastq.gz \
+                out=${prefix_pe}_1.flip.trim.fastq.gz \
+                out2=${prefix_pe}_2.flip.trim.fastq.gz \
+                rcomp=t
+          
         hisat2 -p 32 \
                --very-sensitive \
                --no-spliced-alignment \
                -x ${indices_path} \
                -1 ${prefix_pe}_1.flip.trim.fastq.gz \
                -2 ${prefix_pe}_2.flip.trim.fastq.gz \
-               $rnastrandness \
+               ${rnastrandness} \
                --new-summary \
                > ${prefix_pe}.sam \
                2> ${prefix_pe}.hisat2_mapstats.txt                  
@@ -497,16 +498,11 @@ process bbduk_hisat2 {
     } else if (params.singleEnd && params.flip) {
         """
         echo ${name}        
-        reformat.sh -Xmx40g \
-                t=32 \
-                in=${reads} \
-                out=${prefix_se}.flip.fastq.gz \
-                rcomp=t
         
         bbduk.sh -Xmx40g \
                   t=32 \
-                  in=${prefix_se}.flip.fastq.gz \
-                  out=${prefix_se}.flip.trim.fastq.gz \
+                  in=${reads} \
+                  out=${prefix_se}.trim.fastq.gz \
                   ref=${bbmap_adapters} \
                   ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
                   maq=10 minlen=25 \
@@ -514,12 +510,18 @@ process bbduk_hisat2 {
                   stats=${prefix_se}.trimstats.txt \
                   refstats=${prefix_se}.refstats.txt
                   
+        reformat.sh -Xmx40g \
+                t=32 \
+                in=${prefix_se}.trim.fastq.gz \
+                out=${prefix_se}.flip.trim.fastq.gz \
+                rcomp=t
+
         hisat2  -p 32 \
                 --very-sensitive \
                 --no-spliced-alignment \
                 -x ${indices_path}\
                 -U ${prefix_se}.flip.trim.fastq.gz  \
-                $rnastrandness \
+                ${rnastrandness} \
                 --new-summary \
                 > ${prefix_se}.sam \
                 2> ${prefix_se}.hisat2_mapstats.txt                  
@@ -528,20 +530,12 @@ process bbduk_hisat2 {
                 """
         echo ${prefix_pe}
 
-        reformat.sh -Xmx40g \
+        bbduk.sh -Xmx40g \
                 t=32 \
                 in=${reads[0]} \
                 in2=${reads[1]} \
-                out=${prefix_pe}.flip.fastq.gz \
-                out2=${prefix_pe}.flip.fastq.gz \
-                rcompmate=t
-
-        bbduk.sh -Xmx40g \
-                t=32 \
-                in=${prefix_pe}.flip.fastq.gz \
-                in2=${prefix_pe}.flip.fastq.gz \
-                out=${prefix_pe}.flip.trim.fastq.gz \
-                out2=${prefix_pe}.flip.trim.fastq.gz \
+                out=${prefix_pe}_1.trim.fastq.gz \
+                out2=${prefix_pe}_2.trim.fastq.gz \
                 ref=${bbmap_adapters} \
                 ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
                 nullifybrokenquality=t \
@@ -551,13 +545,21 @@ process bbduk_hisat2 {
                 stats=${prefix_pe}.trimstats.txt \
                 refstats=${prefix_pe}.refstats.txt
                 
+        reformat.sh -Xmx40g \
+                t=32 \
+                in=${prefix_pe}_1.trim.fastq.gz \
+                in2=${prefix_pe}_2.trim.fastq.gz \
+                out=${prefix_pe}_1.flip.trim.fastq.gz \
+                out2=${prefix_pe}_2.flip.trim.fastq.gz \
+                rcompmate=t
+
         hisat2 -p 32 \
                --very-sensitive \
                --no-spliced-alignment \
                -x ${indices_path} \
                -1 ${prefix_pe}_1.flip.trim.fastq.gz \
                -2 ${prefix_pe}_2.flip.trim.fastq.gz \
-               $rnastrandness \
+               ${rnastrandness} \
                --new-summary \
                > ${prefix_pe}.sam \
                2> ${prefix_pe}.hisat2_mapstats.txt                   
@@ -586,7 +588,7 @@ process bbduk_hisat2 {
                -x ${indices_path} \
                -1 ${prefix_pe}_1.trim.fastq.gz \
                -2 ${prefix_pe}_2.trim.fastq.gz \
-               $rnastrandness \
+               ${rnastrandness} \
                --new-summary \
                > ${prefix_pe}.sam \
                2> ${prefix_pe}.hisat2_mapstats.txt                          
@@ -611,7 +613,7 @@ process bbduk_hisat2 {
                 --no-spliced-alignment \
                 -x ${indices_path}\
                 -U ${prefix_se}.trim.fastq.gz \
-                $rnastrandness \
+                ${rnastrandness} \
                 --new-summary \
                 > ${prefix_se}.sam \
                 2> ${prefix_se}.hisat2_mapstats.txt                  
