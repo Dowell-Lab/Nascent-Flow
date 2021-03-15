@@ -1263,7 +1263,6 @@ process FStitch {
     publishDir "${params.outdir}/fstitch/segment/", mode: 'copy', pattern: "*.fstitch_seg.bed"
     publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "${name}.fstitch_bidir.bed"
     publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "*fstitch_bidir.{short,long}.bed"
-    publishDir "${params.outdir}/fstitch/bidirs/hist/", mode: 'copy', pattern: "*.html"
     publishDir "${params.outdir}/fstitch/bidirs/stats/", mode: 'copy', pattern: "*.txt"
     
     when:
@@ -1279,7 +1278,6 @@ process FStitch {
     file ("*.fstitch_seg.bed") into fs_seg_out
     set val(name), file ("*.fstitch_bidir.bed") into fs_bidir_out
     file ("*fstitch_bidir.{short,long}.bed") into fs_bidir_short_long_out
-    file ("*.html") into fs_bidir_plot_out
     file ("*.txt") into fs_bidir_stats_out
     
     script:
@@ -1307,7 +1305,6 @@ process FStitch {
         -b ${name}.fstitch_seg.bed \
         -g ${genome_refseq} \
         -o ${name}.fstitch_bidir.bed \
-        -p \
         -s    
     """
 }

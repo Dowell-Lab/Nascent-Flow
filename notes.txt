@@ -1,0 +1,1 @@
+deleted the -p out of the bidir command
