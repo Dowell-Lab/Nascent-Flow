@@ -217,6 +217,8 @@ else {
     read_files_sra = Channel.empty()
 }
 
+software_versions = Channel.create()
+
 
 // Header log info
 log.info """=======================================================
@@ -294,35 +296,35 @@ try {
 process get_software_versions {
     validExitStatus 0,1,127
     time '1h'
-    publishDir "${params.outdir}/software_versions/", mode: 'copy', pattern: '*.txt'
 
     output:
-    file 'software_versions_mqc.yaml' into software_versions_yaml
-    file '*.txt' into software_versions_text
+    stdout into software_versions
 
     script:
     """
-    echo $params.version > v_pipeline.txt
-    echo $workflow.nextflow.version > v_nextflow.txt
-    fastqc --version > v_fastqc.txt
-    bbversion.sh --version > v_bbduk.txt
-    hisat2 --version > v_hisat2.txt
-    samtools --version > v_samtools.txt
-    fastq-dump --version > v_fastq-dump.txt
-    preseq 2> v_preseq.txt
-    bedtools --version > v_bedtools.txt
-    igvtools version > v_igv-tools.txt
-    $fstitch_path train --version > v_fstitch.txt
-    $tfit_path model --version > v_tfit.txt
-    #process_atac --version > v_dastk.txt
-    infer_experiment.py --version > v_rseqc.txt
-    multiqc --version > v_multiqc.txt
-    for X in `ls *.txt`; do
-        cat \$X >> all_versions.txt;
-    done
-    scrape_software_versions.py > software_versions_mqc.yaml
+    printf "Nascent-Flow version:\t%s\n" ${params.version}
+    printf "Nextflow version:\t%s\n" ${workflow.nextflow.version}
+    printf "FastQC version:\t%s\n" \$(fastqc -v | awk -F " v" '{print \$2}')
+    printf "BBMap version:\t%s\n" \$(bbversion.sh --version)
+    printf "HISAT2 version:\t%s\n" \$(hisat2 --version | head -1 | awk '{print \$NF}')
+    printf "Samtools version:\t%s\n" \$(samtools --version | head -1 | awk '{print \$NF}')
+    printf "SRA tools version:\t%s\n" \$(fastq-dump --version | awk '{print \$NF}')
+    printf "Preseq version:\t%s\n" \$(preseq 2>&1 | head -2 | tail -1 | awk '{print \$NF}')
+    printf "Bedtools version:\t%s\n" \$(bedtools --version | awk -F " v" '{print \$2}')
+    printf "IGV Tools version:\t%s\n" \$(igvtools version | head -1 | awk '{print \$3}')
+    printf "RSeQC version:\t%s\n" \$(infer_experiment.py --version | awk '{print \$NF}')
+    printf "Seqkit version:\t%s\n" \$(seqkit version | head -1 | awk -F " v" '{print \$2}')
+    printf "MPich version:\t%s\n" \$(mpiexec --version | head -2 | tail -1 | awk '{print \$NF}')
+    printf "GCC version:\t%s\n" \$(gcc --version | head -1 | awk '{print \$NF}')
+    printf "Python version:\t%s\n" \$(python3 --version | awk '{print \$NF}')
+    printf "Numpy version:\t%s\n" \$(python3 -c "import numpy; print(numpy.__version__)")
+    printf "FStitch version:\t%s\n" \$(${params.fstitch_path} train --version)
+    printf "Tfit version:\t%s\n" \$(${params.tfit_path} model --version)
+
     """
 }
+
+software_versions.collectFile(name: "software_versions_${workflow.runName}.txt", storeDir: "${params.outdir}/pipeline_info")
 
 /*
  * Step 1 -- get fastq files from downloaded sras
@@ -1233,7 +1235,6 @@ process multiQC {
     file ('qc/mapstats/*') from bam_flagstat.collect()
     file ('qc/rseqc/*') from rseqc_results.collect()
     file ('qc/preseq/*') from preseq_results.collect()
-    file ('software_versions/*') from software_versions_yaml
     file ('qc/hisat2_mapstats/*') from hisat2_mapstats.collect()
     file ('qc/picard/*') from picard_stats_multiqc.collect()    
 
@@ -1611,9 +1612,9 @@ workflow.onComplete {
     if( !output_d.exists() ) {
       output_d.mkdirs()
     }
-    def output_hf = new File( output_d, "pipeline_report.html" )
+    def output_hf = new File( output_d, "pipeline_report_${workflow.runName}.html" )
     output_hf.withWriter { w -> w << email_html }
-    def output_tf = new File( output_d, "pipeline_report.txt" )
+    def output_tf = new File( output_d, "pipeline_report_${workflow.runName}.txt" )
     output_tf.withWriter { w -> w << email_txt }
 
     log.info "[NascentFlow] Pipeline Complete"
