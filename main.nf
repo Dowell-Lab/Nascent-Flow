@@ -302,29 +302,32 @@ process get_software_versions {
 
     script:
     """
-    printf "Nascent-Flow version:\t%s\n" ${params.version}
-    printf "Nextflow version:\t%s\n" ${workflow.nextflow.version}
-    printf "FastQC version:\t%s\n" \$(fastqc -v | awk -F " v" '{print \$2}')
-    printf "BBMap version:\t%s\n" \$(bbversion.sh --version)
-    printf "HISAT2 version:\t%s\n" \$(hisat2 --version | head -1 | awk '{print \$NF}')
-    printf "Samtools version:\t%s\n" \$(samtools --version | head -1 | awk '{print \$NF}')
-    printf "SRA tools version:\t%s\n" \$(fastq-dump --version | awk '{print \$NF}')
-    printf "Preseq version:\t%s\n" \$(preseq 2>&1 | head -2 | tail -1 | awk '{print \$NF}')
-    printf "Bedtools version:\t%s\n" \$(bedtools --version | awk -F " v" '{print \$2}')
-    printf "IGV Tools version:\t%s\n" \$(igvtools version | head -1 | awk '{print \$3}')
-    printf "RSeQC version:\t%s\n" \$(infer_experiment.py --version | awk '{print \$NF}')
-    printf "Seqkit version:\t%s\n" \$(seqkit version | head -1 | awk -F " v" '{print \$2}')
-    printf "MPich version:\t%s\n" \$(mpiexec --version | head -2 | tail -1 | awk '{print \$NF}')
-    printf "GCC version:\t%s\n" \$(gcc --version | head -1 | awk '{print \$NF}')
-    printf "Python version:\t%s\n" \$(python3 --version | awk '{print \$NF}')
-    printf "Numpy version:\t%s\n" \$(python3 -c "import numpy; print(numpy.__version__)")
-    printf "FStitch version:\t%s\n" \$(${params.fstitch_path} train --version)
-    printf "Tfit version:\t%s\n" \$(${params.tfit_path} model --version)
+    printf "nascentflow_version: %s\n" ${params.version}
+    printf "nextflow_version: %s\n" ${workflow.nextflow.version}
+    printf "fastqc_version: %s\n" \$(fastqc -v | head -1 | awk -F " v" '{print \$2}')
+    printf "bbmap_version: %s\n" \$(bbversion.sh --version | head -1)
+    printf "hisat2_version: %s\n" \$(hisat2 --version | head -1 | awk '{print \$NF}')
+    printf "samtools_version: %s\n" \$(samtools --version | head -1 | awk '{print \$NF}')
+    printf "sratools_version: %s\n" \$(fastq-dump --version | head -2 | tail -1 | awk '{print \$NF}')
+    printf "preseq_version: %s\n" \$(preseq 2>&1 | head -2 | tail -1 | awk '{print \$NF}')
+    printf "java_version: %s\n" \$(java -version 2>&1 | head -1 | awk -F '"' '{print \$2}')
+    printf "picard_gc_version: %s\n" \$(java -jar ${params.picard_path} CollectGcBiasMetrics --version 2>&1 | head -1 | awk -F "-" '{print \$1}')
+    printf "picard_dups_version: %s\n" \$(java -jar ${params.picard_path} MarkDuplicates --version 2>&1 | head -1 | awk -F "-" '{print \$1}')
+    printf "bedtools_version: %s\n" \$(bedtools --version | head -1 | awk -F " v" '{print \$2}')
+    printf "igvtools_version: %s\n" \$(igvtools version | head -1 | awk '{print \$3}')
+    printf "rseqc_version: %s\n" \$(infer_experiment.py --version | head -1 | awk '{print \$NF}')
+    printf "seqkit_version: %s\n" \$(seqkit version | head -1 | awk -F " v" '{print \$2}')
+    printf "mpich_version: %s\n" \$(mpichversion | head -1 | awk '{print \$NF}')
+    printf "gcc_version: %s\n" \$(gcc --version | head -1 | awk '{print \$NF}')
+    printf "python_version: %s\n" \$(python3 --version | head -1 | awk '{print \$NF}')
+    printf "numpy_version: %s\n" \$(python3 -c "import numpy; print(numpy.__version__)" | head -1)
+    printf "fstitch_version: %s\n" \$(${params.fstitch_path} train --version | head -1)
+    printf "tfit_version: %s\n" \$(${params.tfit_path} model --version | head -1)
 
     """
 }
 
-software_versions.collectFile(name: "software_versions_${workflow.runName}.txt", storeDir: "${params.outdir}/pipeline_info")
+software_versions.collectFile(name: "software_versions_${workflow.runName}.yaml", storeDir: "${params.outdir}/pipeline_info")
 
 /*
  * Step 1 -- get fastq files from downloaded sras
