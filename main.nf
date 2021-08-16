@@ -121,6 +121,11 @@ multiqc_config = file(params.multiqc_config)
 output_docs = file("$baseDir/docs/output.md")
 params.extract_fastqc_stats = "$baseDir/bin/extract_fastqc_stats.sh"
 
+import java.text.SimpleDateFormat
+def date = new java.util.Date()
+def sdf = new SimpleDateFormat("yyMMdd")
+output_date =  sdf.format(date)
+
 // Validate inputs
 
 if ( params.genome ){
@@ -327,7 +332,7 @@ process get_software_versions {
     """
 }
 
-software_versions.collectFile(name: "software_versions_${workflow.runName}.yaml", storeDir: "${params.outdir}/pipeline_info")
+software_versions.collectFile(name: "software_versions_nascent_${output_date}_${workflow.runName}.yaml", storeDir: "${params.outdir}/pipeline_info")
 
 /*
  * Step 1 -- get fastq files from downloaded sras
