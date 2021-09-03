@@ -328,7 +328,7 @@ process get_software_versions {
     printf "numpy_version: %s\n" \$(python3 -c "import numpy; print(numpy.__version__)" | head -1)
     printf "fstitch_version: %s\n" \$(${params.fstitch_path} train --version | head -1)
     printf "tfit_version: %s\n" \$(${params.tfit_path} model --version | head -1)
-
+    printf "pipeline_hash: %s\n" ${workflow.scriptId}"
     """
 }
 
