@@ -763,18 +763,6 @@ process samtools {
     set val(name), file("${name}.sorted.cram.crai") into cram_index_ch
 
     script:
-    if (!params.singleEnd) {
-    """
-    samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
-    samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
-    samtools flagstat ${name}.sorted.bam > ${name}.flagstat
-    samtools view -@ 16 -F 0x40 ${name}.sorted.bam | cut -f1 | sort | uniq | wc -l > ${name}.millionsmapped
-    samtools index ${name}.sorted.bam ${name}.sorted.bam.bai
-    samtools view -@ 16 -C -T ${genome} -o ${name}.cram ${name}.sorted.bam
-    samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
-    samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
-    """
-    } else {
     """
     samtools view -@ 16 -bS -o ${name}.bam ${mapped_sam}
     samtools sort -@ 16 ${name}.bam > ${name}.sorted.bam
@@ -785,7 +773,6 @@ process samtools {
     samtools sort -@ 16 -O cram ${name}.cram > ${name}.sorted.cram
     samtools index -c ${name}.sorted.cram ${name}.sorted.cram.crai
     """
-    }
 }
 
 sorted_bam_ch
