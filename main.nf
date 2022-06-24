@@ -299,7 +299,6 @@ try {
  * Parse software version numbers
  */
 process get_software_versions {
-    validExitStatus 0,1,127
     time '1h'
 
     output:
@@ -393,7 +392,6 @@ process sra_dump {
  */
 
 process fastQC {
-    validExitStatus 0,1
     tag "$prefix"
     memory '8 GB'
     publishDir "${params.outdir}" , mode: 'copy',
@@ -432,7 +430,6 @@ process fastQC {
  */
 
 process bbduk_hisat2 {
-    validExitStatus 0
     tag "$name"
     cpus 32
     time '2h'
@@ -637,7 +634,6 @@ process bbduk_hisat2 {
  */
 
 process fastQC_trim {
-    validExitStatus 0,1
     tag "$name"
     memory '4 GB'
     publishDir "${params.outdir}" , mode: 'copy',
@@ -672,7 +668,6 @@ process fastQC_trim {
 if (params.noTrim) {
     process hisat2 {
         tag "$name"
-        validExitStatus 0
         cpus 32
         memory '40 GB'
         time '2h'
@@ -870,7 +865,6 @@ process preseq {
 process rseqc {
     tag "$name"
     time '8h'
-    validExitStatus 0,1,143
     memory '40 GB'
     publishDir "${params.outdir}/qc/rseqc" , mode: 'copy',
         saveAs: {filename ->
@@ -945,7 +939,6 @@ process pileup {
  */
 
 process bedgraphs {
-    validExitStatus 0,143
     tag "$name"
     memory '40 GB'
     time '4h'
@@ -1097,7 +1090,6 @@ process bedgraphs {
  */
 
 process dreg_prep {
-    validExitStatus 0,143
     errorStrategy 'ignore'
     tag "$name"
     memory '150 GB'
@@ -1161,7 +1153,6 @@ process dreg_prep {
  */
 
 process normalized_bigwigs {
-    validExitStatus 0
     tag "$name"
     memory '10 GB'
     publishDir "${params.outdir}/mapped/rcc_bigwig", mode: 'copy'
@@ -1214,7 +1205,6 @@ process igvtools {
  */
 
 process multiQC {
-    validExitStatus 0,1,143
     errorStrategy 'ignore'
     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "multiqc_report.html"
     publishDir "${params.outdir}/multiqc/", mode: 'copy', pattern: "*_data"
@@ -1254,7 +1244,6 @@ process FStitch {
     tag "$name"
     memory '50 GB'
     time '1h'
-    validExitStatus 0
     publishDir "${params.outdir}/fstitch/", mode: 'copy', pattern: "*.hmminfo"
     publishDir "${params.outdir}/fstitch/segment/", mode: 'copy', pattern: "*.fstitch_seg.bed"
     publishDir "${params.outdir}/fstitch/bidirs/", mode: 'copy', pattern: "${name}.fstitch_bidir.bed"
@@ -1315,7 +1304,6 @@ process tfit {
     time '20h'
     cpus 16
     queue 'short'
-    validExitStatus 0
     publishDir "${params.outdir}/tfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
     publishDir "${params.outdir}/tfit/logs", mode: 'copy', pattern: "*{tsv,log}"
     
@@ -1351,7 +1339,6 @@ process prelimtfit {
     time '48h'
     cpus 16
     queue 'long'
-    validExitStatus 0
     publishDir "${params.outdir}/prelimtfit", mode: 'copy', pattern: "*tfit_bidirs.bed"
     publishDir "${params.outdir}/prelimtfit/logs", mode: 'copy', pattern: "*{tsv,log}"
     publishDir "${params.outdir}/prelimtfit/prelim", mode: 'copy', pattern: "*tfit_prelim.bed"
@@ -1398,7 +1385,6 @@ process prelimtfit {
 //     memory '20 GB'
 //     time '2h'
 //     cpus 16
-//     validExitStatus 0
 //     publishDir "${params.outdir}/dastk", mode: 'copy', pattern: "*.txt"
 //     
 //     when:
@@ -1431,7 +1417,6 @@ process multicov {
     tag "$name"
     memory '10 GB'
     time '6h'
-    validExitStatus 0
     publishDir "${params.outdir}/counts", mode: 'copy', pattern: "*.bed"
     
     when:
@@ -1463,7 +1448,6 @@ process multicov {
 process merge_multicov {
     memory '10 GB'
     time '1h'
-    validExitStatus 0
     publishDir "${params.outdir}/counts", mode: 'copy', pattern: "merged_gene_counts.bed"
     
     when:
@@ -1491,7 +1475,6 @@ process nqc {
     memory '20 GB'
     time '2h'
     cpus 16    
-    validExitStatus 0
     publishDir "${params.outdir}/qc/nqc", mode: 'copy', pattern: "*.{txt,html,png}"
     
     when:
