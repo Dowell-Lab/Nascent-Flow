@@ -429,205 +429,206 @@ process fastQC {
  * STEP 2 - Trimming & Mapping
  */
 
-process bbduk_hisat2 {
-    tag "$name"
-    cpus 32
-    time '2h'
-    memory '40 GB'
-    publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.{refstats,trimstats}.txt"
-    publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*hisat2_mapstats.txt"    
-    if (params.saveTrim || params.saveAllfq) {
-        publishDir "${params.outdir}/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
-    }
+if (!params.noTrim) {
+    process bbduk_hisat2 {
+        tag "$name"
+        cpus 32
+        time '2h'
+        memory '40 GB'
+        publishDir "${params.outdir}/qc/trimstats", mode: 'copy', pattern: "*.{refstats,trimstats}.txt"
+        publishDir "${params.outdir}/qc/hisat2_mapstats", mode: 'copy', pattern: "*hisat2_mapstats.txt"    
+        if (params.saveTrim || params.saveAllfq) {
+            publishDir "${params.outdir}/fastq_trimmed", mode: 'copy', pattern: "*.fastq.gz"
+        }
     
-    when:
-    !params.noTrim
+        when:
+        !params.noTrim
 
-    input:
-    file(indices) from hisat2_indices
-    val(indices_path) from hisat2_indices        
-    set val(name), file(reads) from fastq_reads_trim.mix(fastq_reads_trim_sra)
+        input:
+        file(indices) from hisat2_indices
+        val(indices_path) from hisat2_indices        
+        set val(name), file(reads) from fastq_reads_trim.mix(fastq_reads_trim_sra)
 
-    output:
-    set val(name), file("*.trim.fastq.gz") into trimmed_reads_fastqc
-    file "*.{refstats,trimstats}.txt" into trim_stats
-    set val(name), file("*.sam") into hisat2_sam
-    file("*hisat2_mapstats.txt") into hisat2_mapstats       
+        output:
+        set val(name), file("*.trim.fastq.gz") into trimmed_reads_fastqc
+        file "*.{refstats,trimstats}.txt" into trim_stats
+        set val(name), file("*.sam") into hisat2_sam
+        file("*hisat2_mapstats.txt") into hisat2_mapstats       
 
-    script:
-    prefix_pe = reads[0].toString() - ~/(_1\.)?(_R1)?(\.fq)?(fq)?(\.fastq)?(fastq)?(\.gz)?$/
-    prefix_se = reads[0].toString() - ~/(\.fq)?(\.fastq)?(\.gz)?$/
+        script:
+        prefix_pe = reads[0].toString() - ~/(_1\.)?(_R1)?(\.fq)?(fq)?(\.fastq)?(fastq)?(\.gz)?$/
+        prefix_se = reads[0].toString() - ~/(\.fq)?(\.fastq)?(\.gz)?$/
     
-    def rnastrandness = ''
-    if (params.forwardStranded && !params.unStranded){
-        rnastrandness = params.singleEnd ? '--rna-strandness F' : '--rna-strandness FR'
-    } else if (params.reverseStranded && !params.unStranded){
-        rnastrandness = params.singleEnd ? '--rna-strandness R' : '--rna-strandness RF'
-    }
+        def rnastrandness = ''
+        if (params.forwardStranded && !params.unStranded){
+            rnastrandness = params.singleEnd ? '--rna-strandness F' : '--rna-strandness FR'
+        } else if (params.reverseStranded && !params.unStranded){
+            rnastrandness = params.singleEnd ? '--rna-strandness R' : '--rna-strandness RF'
+        }
     
-    if (!params.singleEnd && params.flip) {
-        """
-        echo ${name}         
+        if (!params.singleEnd && params.flip) {
+            """
+            echo ${name}         
                 
-        bbduk.sh -Xmx40g \
-                  t=32 \
-                  in=${reads[0]} \
-                  in2=${reads[1]} \
-                  out=${prefix_pe}_1.trim.fastq.gz \
-                  out2=${prefix_pe}_2.trim.fastq.gz \
-                  ref=${bbmap_adapters} \
-                  ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
-                  tpe tbo \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${prefix_pe}.trimstats.txt \
-                  refstats=${prefix_pe}.refstats.txt
+            bbduk.sh -Xmx40g \
+                    t=32 \
+                    in=${reads[0]} \
+                    in2=${reads[1]} \
+                    out=${prefix_pe}_1.trim.fastq.gz \
+                    out2=${prefix_pe}_2.trim.fastq.gz \
+                    ref=${bbmap_adapters} \
+                    ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
+                    maq=10 minlen=25 \
+                    tpe tbo \
+                    literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                    stats=${prefix_pe}.trimstats.txt \
+                    refstats=${prefix_pe}.refstats.txt
 
-        reformat.sh -Xmx40g \
-                t=32 \
-                in=${prefix_pe}_1.trim.fastq.gz \
-                in2=${prefix_pe}_2.trim.fastq.gz \
-                out=${prefix_pe}_1.flip.trim.fastq.gz \
-                out2=${prefix_pe}_2.flip.trim.fastq.gz \
-                rcomp=t
+            reformat.sh -Xmx40g \
+                    t=32 \
+                    in=${prefix_pe}_1.trim.fastq.gz \
+                    in2=${prefix_pe}_2.trim.fastq.gz \
+                    out=${prefix_pe}_1.flip.trim.fastq.gz \
+                    out2=${prefix_pe}_2.flip.trim.fastq.gz \
+                    rcomp=t
           
-        hisat2 -p 32 \
-               --very-sensitive \
-               --no-spliced-alignment \
-               -x ${indices_path} \
-               -1 ${prefix_pe}_1.flip.trim.fastq.gz \
-               -2 ${prefix_pe}_2.flip.trim.fastq.gz \
-               ${rnastrandness} \
-               --new-summary \
-               > ${prefix_pe}.sam \
-               2> ${prefix_pe}.hisat2_mapstats.txt                  
-        """
-    } else if (params.singleEnd && params.flip) {
-        """
-        echo ${name}        
+            hisat2 -p 32 \
+                    --very-sensitive \
+                    --no-spliced-alignment \
+                    -x ${indices_path} \
+                    -1 ${prefix_pe}_1.flip.trim.fastq.gz \
+                    -2 ${prefix_pe}_2.flip.trim.fastq.gz \
+                    ${rnastrandness} \
+                    --new-summary \
+                    > ${prefix_pe}.sam \
+                    2> ${prefix_pe}.hisat2_mapstats.txt                  
+            """
+        } else if (params.singleEnd && params.flip) {
+            """
+            echo ${name}        
         
-        bbduk.sh -Xmx40g \
-                  t=32 \
-                  in=${reads} \
-                  out=${prefix_se}.trim.fastq.gz \
-                  ref=${bbmap_adapters} \
-                  ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${prefix_se}.trimstats.txt \
-                  refstats=${prefix_se}.refstats.txt
+            bbduk.sh -Xmx40g \
+                    t=32 \
+                    in=${reads} \
+                    out=${prefix_se}.trim.fastq.gz \
+                    ref=${bbmap_adapters} \
+                    ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
+                    maq=10 minlen=25 \
+                    literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                    stats=${prefix_se}.trimstats.txt \
+                    refstats=${prefix_se}.refstats.txt
                   
-        reformat.sh -Xmx40g \
-                t=32 \
-                in=${prefix_se}.trim.fastq.gz \
-                out=${prefix_se}.flip.trim.fastq.gz \
-                rcomp=t
+            reformat.sh -Xmx40g \
+                    t=32 \
+                    in=${prefix_se}.trim.fastq.gz \
+                    out=${prefix_se}.flip.trim.fastq.gz \
+                    rcomp=t
 
-        hisat2  -p 32 \
-                --very-sensitive \
-                --no-spliced-alignment \
-                -x ${indices_path}\
-                -U ${prefix_se}.flip.trim.fastq.gz  \
-                ${rnastrandness} \
-                --new-summary \
-                > ${prefix_se}.sam \
-                2> ${prefix_se}.hisat2_mapstats.txt                  
-        """
-    } else if (!params.singleEnd && params.flipR2) {
-                """
-        echo ${prefix_pe}
+            hisat2  -p 32 \
+                    --very-sensitive \
+                    --no-spliced-alignment \
+                    -x ${indices_path}\
+                    -U ${prefix_se}.flip.trim.fastq.gz  \
+                    ${rnastrandness} \
+                    --new-summary \
+                    > ${prefix_se}.sam \
+                    2> ${prefix_se}.hisat2_mapstats.txt                  
+            """
+        } else if (!params.singleEnd && params.flipR2) {
+            """
+            echo ${prefix_pe}
 
-        bbduk.sh -Xmx40g \
-                t=32 \
-                in=${reads[0]} \
-                in2=${reads[1]} \
-                out=${prefix_pe}_1.trim.fastq.gz \
-                out2=${prefix_pe}_2.trim.fastq.gz \
-                ref=${bbmap_adapters} \
-                ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
-                nullifybrokenquality=t \
-                maq=10 minlen=25 \
-                tpe tbo \
-                literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                stats=${prefix_pe}.trimstats.txt \
-                refstats=${prefix_pe}.refstats.txt
+            bbduk.sh -Xmx40g \
+                    t=32 \
+                    in=${reads[0]} \
+                    in2=${reads[1]} \
+                    out=${prefix_pe}_1.trim.fastq.gz \
+                    out2=${prefix_pe}_2.trim.fastq.gz \
+                    ref=${bbmap_adapters} \
+                    ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
+                    nullifybrokenquality=t \
+                    maq=10 minlen=25 \
+                    tpe tbo \
+                    literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                    stats=${prefix_pe}.trimstats.txt \
+                    refstats=${prefix_pe}.refstats.txt
                 
-        reformat.sh -Xmx40g \
-                t=32 \
-                in=${prefix_pe}_1.trim.fastq.gz \
-                in2=${prefix_pe}_2.trim.fastq.gz \
-                out=${prefix_pe}_1.flip.trim.fastq.gz \
-                out2=${prefix_pe}_2.flip.trim.fastq.gz \
-                rcompmate=t
+            reformat.sh -Xmx40g \
+                    t=32 \
+                    in=${prefix_pe}_1.trim.fastq.gz \
+                    in2=${prefix_pe}_2.trim.fastq.gz \
+                    out=${prefix_pe}_1.flip.trim.fastq.gz \
+                    out2=${prefix_pe}_2.flip.trim.fastq.gz \
+                    rcompmate=t
 
-        hisat2 -p 32 \
-               --very-sensitive \
-               --no-spliced-alignment \
-               -x ${indices_path} \
-               -1 ${prefix_pe}_1.flip.trim.fastq.gz \
-               -2 ${prefix_pe}_2.flip.trim.fastq.gz \
-               ${rnastrandness} \
-               --new-summary \
-               > ${prefix_pe}.sam \
-               2> ${prefix_pe}.hisat2_mapstats.txt                   
-        """
-    } else if (!params.singleEnd) {
-        """
-        echo ${prefix_pe}
+            hisat2 -p 32 \
+                    --very-sensitive \
+                    --no-spliced-alignment \
+                    -x ${indices_path} \
+                    -1 ${prefix_pe}_1.flip.trim.fastq.gz \
+                    -2 ${prefix_pe}_2.flip.trim.fastq.gz \
+                    ${rnastrandness} \
+                    --new-summary \
+                    > ${prefix_pe}.sam \
+                    2> ${prefix_pe}.hisat2_mapstats.txt                   
+            """
+        } else if (!params.singleEnd) {
+            """
+            echo ${prefix_pe}
 
-        bbduk.sh -Xmx40g \
-                  t=32 \
-                  in=${reads[0]} \
-                  in2=${reads[1]} \
-                  out=${prefix_pe}_1.trim.fastq.gz \
-                  out2=${prefix_pe}_2.trim.fastq.gz \
-                  ref=${bbmap_adapters} \
-                  ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
-                  tpe tbo \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${prefix_pe}.trimstats.txt \
-                  refstats=${prefix_pe}.refstats.txt
+            bbduk.sh -Xmx40g \
+                    t=32 \
+                    in=${reads[0]} \
+                    in2=${reads[1]} \
+                    out=${prefix_pe}_1.trim.fastq.gz \
+                    out2=${prefix_pe}_2.trim.fastq.gz \
+                    ref=${bbmap_adapters} \
+                    ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
+                    maq=10 minlen=25 \
+                    tpe tbo \
+                    literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                    stats=${prefix_pe}.trimstats.txt \
+                    refstats=${prefix_pe}.refstats.txt
                   
-        hisat2 -p 32 \
-               --very-sensitive \
-               --no-spliced-alignment \
-               -x ${indices_path} \
-               -1 ${prefix_pe}_1.trim.fastq.gz \
-               -2 ${prefix_pe}_2.trim.fastq.gz \
-               ${rnastrandness} \
-               --new-summary \
-               > ${prefix_pe}.sam \
-               2> ${prefix_pe}.hisat2_mapstats.txt                          
-        """
-    } else {
-        """
-        echo ${prefix_se}
+            hisat2 -p 32 \
+                    --very-sensitive \
+                    --no-spliced-alignment \
+                    -x ${indices_path} \
+                    -1 ${prefix_pe}_1.trim.fastq.gz \
+                    -2 ${prefix_pe}_2.trim.fastq.gz \
+                    ${rnastrandness} \
+                    --new-summary \
+                    > ${prefix_pe}.sam \
+                    2> ${prefix_pe}.hisat2_mapstats.txt                          
+            """
+        } else {
+            """
+            echo ${prefix_se}
 
-        bbduk.sh -Xmx40g \
-                  t=32 \
-                  in=${reads} \
-                  out=${prefix_se}.trim.fastq.gz \
-                  ref=${bbmap_adapters} \
-                  ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
-                  maq=10 minlen=25 \
-                  literal=AAAAAAAAAAAAAAAAAAAAAAA \
-                  stats=${prefix_se}.trimstats.txt \
-                  refstats=${prefix_se}.refstats.txt
+            bbduk.sh -Xmx40g \
+                    t=32 \
+                    in=${reads} \
+                    out=${prefix_se}.trim.fastq.gz \
+                    ref=${bbmap_adapters} \
+                    ktrim=r qtrim=rl trimq=10 k=23 mink=11 hdist=1 \
+                    maq=10 minlen=25 \
+                    literal=AAAAAAAAAAAAAAAAAAAAAAA \
+                    stats=${prefix_se}.trimstats.txt \
+                    refstats=${prefix_se}.refstats.txt
                   
-        hisat2  -p 32 \
-                --very-sensitive \
-                --no-spliced-alignment \
-                -x ${indices_path}\
-                -U ${prefix_se}.trim.fastq.gz \
-                ${rnastrandness} \
-                --new-summary \
-                > ${prefix_se}.sam \
-                2> ${prefix_se}.hisat2_mapstats.txt                  
-        """
-    } 
+            hisat2  -p 32 \
+                    --very-sensitive \
+                    --no-spliced-alignment \
+                    -x ${indices_path}\
+                    -U ${prefix_se}.trim.fastq.gz \
+                    ${rnastrandness} \
+                    --new-summary \
+                    > ${prefix_se}.sam \
+                    2> ${prefix_se}.hisat2_mapstats.txt                  
+            """
+        } 
+    }
 }
-
 
 /*
  * STEP 2+ - Trimmed FastQC
