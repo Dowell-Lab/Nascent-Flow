@@ -100,6 +100,7 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 | --singleEnd  |             | Specifies that the input files are not paired reads (default is paired-end). |
 | --flip       |             | Reverse complements each strand. Necessary for some library preps.           |
 | --flipR2     |             | Reverse complements R2. Necessary for some library preps.                    |
+| --noTrim     |             | Skip trimming and map only. Will also skip flip/flipR2 (any BBMap) steps.    |
 
 **Strandness Options**
 
