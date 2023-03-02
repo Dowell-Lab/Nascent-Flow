@@ -390,12 +390,10 @@ process sra_dump {
         """
     }
 
-fastq_reads_qc_sra_temp.flatten()
-fastq_reads_qc_sra = prefix_store.combine(fastq_reads_qc_sra_temp)
-
 }
 
-
+fastq_reads_qc_sra_temp.flatten()
+fastq_reads_qc_sra = prefix_store.combine(fastq_reads_qc_sra_temp)
 
 /*
  * STEP 1+ - FastQC
