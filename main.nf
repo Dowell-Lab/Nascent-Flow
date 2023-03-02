@@ -219,10 +219,16 @@ if (params.sras) {
     read_files_sra = Channel
                         .fromPath(params.sras)
                         .map { file -> tuple(file.baseName, file) }
+    fastq_reads_qc_sra_unpaired = Channel.empty()
+    fastq_reads_qc_sra_r1 = Channel.empty()
+    fastq_reads_qc_sra_r2 = Channel.empty()
 }
 
 else {
     read_files_sra = Channel.empty()
+    fastq_reads_qc_sra_unpaired = Channel.empty()
+    fastq_reads_qc_sra_r1 = Channel.empty()
+    fastq_reads_qc_sra_r2 = Channel.empty()
 }
 
 software_versions = Channel.create()
@@ -356,8 +362,9 @@ process sra_dump {
 
     output:
     tuple val(prefix), file("*.fastq.gz") into fastq_reads_trim_sra, fastq_reads_hisat2_notrim_sra
-    file("*.fastq.gz") into fastq_reads_qc_sra_temp
-    val(prefix) into prefix_store
+    tuple val(prefix), file("${prefix}.fastq.gz") into fastq_reads_qc_sra_unpaired, optional: true
+    tuple val(prefix), file("${prefix}_1.fastq.gz") into fastq_reads_qc_sra_r1, optional: true
+    tuple val(prefix), file("${prefix}_2.fastq.gz") into fastq_reads_qc_sra_r2, optional: true
    
     script:
     prefix = reads.baseName
@@ -392,8 +399,6 @@ process sra_dump {
 
 }
 
-fastq_reads_qc_sra_temp.flatten()
-fastq_reads_qc_sra = prefix_store.combine(fastq_reads_qc_sra_temp)
 
 /*
  * STEP 1+ - FastQC
@@ -414,7 +419,7 @@ process fastQC {
     !params.skipFastQC && !params.skipAllQC
 
     input:
-    set val(prefix), file(reads) from fastq_reads_qc.mix(fastq_reads_qc_sra)
+    set val(prefix), file(reads) from fastq_reads_qc.mix(fastq_reads_qc_sra_unpaired, fastq_reads_qc_sra_r1, fastq_reads_qc_sra_r2)
 
     output:
     file "*.{zip,html}" into fastqc_results
