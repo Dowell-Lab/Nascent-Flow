@@ -201,7 +201,10 @@ if (params.fastqs) {
         Channel
             .fromFilePairs( params.fastqs, size: params.singleEnd ? 1 : 2 )
             .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
-            .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_hisat2_notrim }
+            .into { fastq_reads_trim; fastq_reads_hisat2_notrim }
+        fastq_reads_qc = Channel
+            .fromPath(params.fastqs)
+            .map { file -> tuple(file.simpleName, file) }
     }
 }
 
@@ -352,9 +355,10 @@ process sra_dump {
     set val(prefix), file(reads) from read_files_sra
 
     output:
-    set val(prefix), file("*.fastq.gz") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_hisat2_notrim_sra
+    tuple val(prefix), file("*.fastq.gz") into fastq_reads_trim_sra, fastq_reads_hisat2_notrim_sra
+    file("*.fastq.gz") into fastq_reads_qc_sra_temp
+    val(prefix) into prefix_store
    
-
     script:
     prefix = reads.baseName
     if (!params.threadfqdump && !params.singleEnd) {
@@ -385,7 +389,13 @@ process sra_dump {
             --sra-id ${reads}
         """
     }
+
+fastq_reads_qc_sra_temp.flatten()
+fastq_reads_qc_sra = prefix_store.combine(fastq_reads_qc_sra_temp)
+
 }
+
+
 
 /*
  * STEP 1+ - FastQC
