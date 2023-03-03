@@ -31,7 +31,7 @@ Secondly, edit the appropriate config file, e.g. `conf/slurm_grch38.config`, to 
     
 ```
 
-Directory paths for sras/fastqs must be enclosed in quotes. Notice the name of the configuration file. It's generally a good idea to keep separate configuration files for samples using different reference genomes, and different organisms. The pipeline runs ***paired-end by default***. The --singleEnd flag must be added for all single-end data. While most nascent data is single-end, Groovy configurations make paired-end processing an easier default.
+Directory paths for sras/fastqs must be enclosed in quotes. Notice the name of the configuration file. It's generally a good idea to keep separate configuration files for samples using different reference genomes, and different organisms. The pipeline runs ***paired-end by default***, as well as unstranded by default, which is suitable for reverse-stranded data (read 1 on opposite strand). The --singleEnd flag must be added for all single-end data. While most nascent data is single-end, Groovy configurations make paired-end processing an easier default.
 
 If anything went wrong, you don't need to restart the pipeline from scratch. Instead...
 
@@ -47,7 +47,10 @@ FStitch can now optionally be run to segment nascent data into active and inacti
 
 ##### Tfit Requirements
 
-Tfit is also now included in the pipeline and will model RNAPII activity using the `model` module (see https://github.com/Dowell-Lab/Tfit). Running the `--tfit` argument in the pipeline requires that the user also runs FStitch as the `bidir` module will be used to gernerate regions of putitive activity to model. Only the default Tfit parameters are used, and there may be additional options that will help refine your data. This will typically take a long time to run (2-48hrs depending on dataset complexity) based on the default 16 thread usage allocation, so be sure to plan accordingly if you include this in the pipeline. Alternatively, the user can specifiy `--prelimtfit` to use Tfit's internal template matching algorithm to generate preliminary regions to model and bypass the FStitch requirement. However, it is highly encouraged to use FStitch to generate the prelimary regions.
+***This implementation of Tfit is no longer best practices. It is recommended to use the Bidirectional-Flow pipeline.***
+(see https://github.com/Dowell-Lab/Bidirectional-Flow)
+
+Tfit is included in the pipeline and will model RNAPII activity using the `model` module (see https://github.com/Dowell-Lab/Tfit). Running the `--tfit` argument in the pipeline requires that the user also runs FStitch as the `bidir` module will be used to gernerate regions of putitive activity to model. Only the default Tfit parameters are used, and there may be additional options that will help refine your data. This will typically take a long time to run (2-48hrs depending on dataset complexity) based on the default 16 thread usage allocation, so be sure to plan accordingly if you include this in the pipeline. Alternatively, the user can specifiy `--prelimtfit` to use Tfit's internal template matching algorithm to generate preliminary regions to model and bypass the FStitch requirement. However, it is highly encouraged to use FStitch to generate the prelimary regions.
 
 ##### Package Requirements (instructions included that are specific to Fiji users)
 
@@ -107,7 +110,7 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 | Arguments             | Usage       | Description                                                                  |
 |-----------------------|-------------|------------------------------------------------------------------------------|
 | --unStranded          |             | Input data will be procssed in HISAT2 as unstranded (default).               |
-| --forwardStranded     |             | Indicates data is forward first-stranded.                                    |
+| --forwardStranded     |             | Indicates data is forward first-stranded. Required for correct PE TDFs.      |
 | --reverseStranded     |             | Indicates data is reverse first-stranded.                                    |
 
 **Performance Options**
@@ -145,4 +148,4 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 * Ignacio Tripodi ([@ignaciot](https://github.com/ignaciot)): Nextflow base code and structure, pipeline implementation
 * Margaret Gruca ([@magruca](https://github.com/magruca)): Nextflow pipeline optimization, original pipeline design and optimization
 * Zach Maas ([@zmaas](https://github.com/zmaas)): Testing and adding a FastQC parser
-
+* Lynn Sanford([@lynn-sanford])(https://github.com/lynn-sanford)): Pipeline maintenance and optimization
