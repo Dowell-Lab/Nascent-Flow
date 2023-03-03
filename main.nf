@@ -1020,60 +1020,76 @@ process bedgraphs {
     sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
     """
     } else {
-    """   
-    samtools view \
-        -h -b -f 0x0040 \
-        ${bam_file} \
-        > ${name}.first_pair.bam
+ 
+        if (params.forwardStranded) {
+        """   
+        samtools view \
+            -h -b -f 0x0080 \
+            ${bam_file} \
+            > ${name}.rev_read.bam
         
-    samtools view \
-        -h -b -f 0x0080 \
-        ${bam_file} \
-        > ${name}.second_pair.bam
-        
+        samtools view \
+            -h -b -f 0x0040 \
+            ${bam_file} \
+            > ${name}.fw_read.bam
+        """
+        } else {
+        """
+        samtools view \
+            -h -b -f 0x0040 \
+            ${bam_file} \
+            > ${name}.rev_read.bam
+
+        samtools view \
+            -h -b -f 0x0080 \
+            ${bam_file} \
+            > ${name}.fw_read.bam
+        """
+        }
+    """    
     genomeCoverageBed \
         -bg \
         -split \
         -strand - \
         -g ${chrom_sizes} \
-        -ibam ${name}.first_pair.bam \
+        -ibam ${name}.rev_read.bam \
         | sortBed \
-        > ${name}.first_pair.pos.bedGraph
+        > ${name}.rev_read.pos.bedGraph
     genomeCoverageBed \
         -bg \
         -split \
         -strand + \
         -g ${chrom_sizes} \
-        -ibam ${name}.first_pair.bam \
+        -ibam ${name}.rev_read.bam \
         | sortBed \
         | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
-        > ${name}.first_pair.neg.bedGraph
+        > ${name}.rev_read.neg.bedGraph
                      
     genomeCoverageBed \
         -bg \
         -split \
         -strand + \
         -g ${chrom_sizes} \
-        -ibam ${name}.second_pair.bam \
+        -ibam ${name}.fw_read.bam \
         | sortBed \
-        > ${name}.second_pair.pos.bedGraph
+        > ${name}.fw_read.pos.bedGraph
     genomeCoverageBed \
         -bg \
         -split \
         -strand - \
         -g ${chrom_sizes} \
-        -ibam ${name}.second_pair.bam \
+        -ibam ${name}.fw_read.bam \
         | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
         | sortBed \
-        > ${name}.second_pair.neg.bedGraph
+        > ${name}.fw_read.neg.bedGraph
                      
     unionBedGraphs \
-        -i ${name}.first_pair.pos.bedGraph ${name}.second_pair.pos.bedGraph \
+        -i ${name}.rev_read.pos.bedGraph ${name}.fw_read.pos.bedGraph \
         | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
         > ${name}.pos.bedGraph 
         
     unionBedGraphs \
-        -i ${name}.first_pair.neg.bedGraph ${name}.second_pair.neg.bedGraph \
+        -i ${name}.rev_read.neg.bedGraph ${name}.fw_read.neg.bedGraph \
         | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
         > ${name}.neg.bedGraph 
     
