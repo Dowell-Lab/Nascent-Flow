@@ -201,10 +201,7 @@ if (params.fastqs) {
         Channel
             .fromFilePairs( params.fastqs, size: params.singleEnd ? 1 : 2 )
             .ifEmpty { exit 1, "Cannot find any reads matching: ${params.reads}\nNB: Path needs to be enclosed in quotes!\nIf this is single-end data, please specify --singleEnd on the command line." }
-            .into { fastq_reads_trim; fastq_reads_hisat2_notrim }
-        fastq_reads_qc = Channel
-            .fromPath(params.fastqs)
-            .map { file -> tuple(file.simpleName, file) }
+            .into { fastq_reads_qc; fastq_reads_trim; fastq_reads_hisat2_notrim }
     }
 }
 
@@ -219,16 +216,10 @@ if (params.sras) {
     read_files_sra = Channel
                         .fromPath(params.sras)
                         .map { file -> tuple(file.baseName, file) }
-    fastq_reads_qc_sra_unpaired = Channel.empty()
-    fastq_reads_qc_sra_r1 = Channel.empty()
-    fastq_reads_qc_sra_r2 = Channel.empty()
 }
 
 else {
     read_files_sra = Channel.empty()
-    fastq_reads_qc_sra_unpaired = Channel.empty()
-    fastq_reads_qc_sra_r1 = Channel.empty()
-    fastq_reads_qc_sra_r2 = Channel.empty()
 }
 
 software_versions = Channel.create()
@@ -361,10 +352,7 @@ process sra_dump {
     set val(prefix), file(reads) from read_files_sra
 
     output:
-    tuple val(prefix), file("*.fastq.gz") into fastq_reads_trim_sra, fastq_reads_hisat2_notrim_sra
-    tuple val(prefix), file("${prefix}.fastq.gz") into fastq_reads_qc_sra_unpaired, optional: true
-    tuple val(prefix), file("${prefix}_1.fastq.gz") into fastq_reads_qc_sra_r1, optional: true
-    tuple val(prefix), file("${prefix}_2.fastq.gz") into fastq_reads_qc_sra_r2, optional: true
+    tuple val(prefix), file("*.fastq.gz") into fastq_reads_qc_sra, fastq_reads_trim_sra, fastq_reads_hisat2_notrim_sra
    
     script:
     prefix = reads.baseName
@@ -419,21 +407,39 @@ process fastQC {
     !params.skipFastQC && !params.skipAllQC
 
     input:
-    set val(prefix), file(reads) from fastq_reads_qc.mix(fastq_reads_qc_sra_unpaired, fastq_reads_qc_sra_r1, fastq_reads_qc_sra_r2)
+    tuple val(prefix), path(reads) from fastq_reads_qc.mix(fastq_reads_qc_sra)
 
     output:
     file "*.{zip,html}" into fastqc_results
     file "*.fastqc_stats.txt" into fastqc_stats
 
     script:
+    def reads_1 = ''
+    def reads_2 = ''
+    if (params.singleEnd) {
+        reads_1 = reads.first()
+    } else {
+        reads_1 = reads.first()
+        reads_2 = reads.last()
+    }
     """
     echo ${prefix}
-    fastqc $reads
+    fastqc ${reads_1}
     
     ${params.extract_fastqc_stats} \
-        --srr=${prefix} \
-        > ${prefix}.fastqc_stats.txt    
+        --srr=${prefix}_1 \
+        > ${prefix}_1.fastqc_stats.txt
     """
+    if (!params.singleEnd) {
+    """
+    fastqc ${reads_2}
+
+    ${params.extract_fastqc_stats} \
+        --srr=${prefix}_2 \
+        > ${prefix}_2.fastqc_stats.txt
+    """
+    }
+
 }
 
 
