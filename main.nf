@@ -416,27 +416,40 @@ process fastQC {
     script:
     def reads_1 = ''
     def reads_2 = ''
+    def prefix_1 = ''
+    def prefix_2 = ''
     if (params.singleEnd) {
         reads_1 = reads.first()
+        prefix_1 = reads_1.simpleName
     } else {
         reads_1 = reads.first()
         reads_2 = reads.last()
+        prefix_1 = reads_1.simpleName
+        prefix_2 = reads_2.simpleName
     }
+    if (params.singleEnd) {
     """
-    echo ${prefix}
+    echo ${prefix_1}
     fastqc ${reads_1}
     
     ${params.extract_fastqc_stats} \
-        --srr=${prefix}_1 \
-        > ${prefix}_1.fastqc_stats.txt
+        --srr=${prefix_1} \
+        > ${prefix_1}.fastqc_stats.txt
     """
-    if (!params.singleEnd) {
+    } else {
     """
+    echo ${prefix_1} ${prefix_2}
+    fastqc ${reads_1}
+
+    ${params.extract_fastqc_stats} \
+        --srr=${prefix_1} \
+        > ${prefix_1}.fastqc_stats.txt
+
     fastqc ${reads_2}
 
     ${params.extract_fastqc_stats} \
-        --srr=${prefix}_2 \
-        > ${prefix}_2.fastqc_stats.txt
+        --srr=${prefix_2} \
+        > ${prefix_2}.fastqc_stats.txt
     """
     }
 
@@ -1019,34 +1032,101 @@ process bedgraphs {
         ${name}.unsorted.neg.rcc.bedGraph
     sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
     """
-    } else {
- 
-        if (params.forwardStranded) {
-        """   
-        samtools view \
-            -h -b -f 0x0080 \
-            ${bam_file} \
-            > ${name}.rev_read.bam
+    } else if (params.forwardStranded) {
+    """   
+    samtools view \
+        -h -b -f 0x0080 \
+        ${bam_file} \
+        > ${name}.rev_read.bam
         
-        samtools view \
-            -h -b -f 0x0040 \
-            ${bam_file} \
-            > ${name}.fw_read.bam
-        """
-        } else {
-        """
-        samtools view \
-            -h -b -f 0x0040 \
-            ${bam_file} \
-            > ${name}.rev_read.bam
+    samtools view \
+        -h -b -f 0x0040 \
+        ${bam_file} \
+        > ${name}.fw_read.bam
 
-        samtools view \
-            -h -b -f 0x0080 \
-            ${bam_file} \
-            > ${name}.fw_read.bam
-        """
-        }
-    """    
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand - \
+        -g ${chrom_sizes} \
+        -ibam ${name}.rev_read.bam \
+        | sortBed \
+        > ${name}.rev_read.pos.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand + \
+        -g ${chrom_sizes} \
+        -ibam ${name}.rev_read.bam \
+        | sortBed \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        > ${name}.rev_read.neg.bedGraph
+
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand + \
+        -g ${chrom_sizes} \
+        -ibam ${name}.fw_read.bam \
+        | sortBed \
+        > ${name}.fw_read.pos.bedGraph
+    genomeCoverageBed \
+        -bg \
+        -split \
+        -strand - \
+        -g ${chrom_sizes} \
+        -ibam ${name}.fw_read.bam \
+        | awk 'BEGIN{FS=OFS="\t"} {\$4=-\$4}1' \
+        | sortBed \
+        > ${name}.fw_read.neg.bedGraph
+
+    unionBedGraphs \
+        -i ${name}.rev_read.pos.bedGraph ${name}.fw_read.pos.bedGraph \
+        | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
+        > ${name}.pos.bedGraph
+
+    unionBedGraphs \
+        -i ${name}.rev_read.neg.bedGraph ${name}.fw_read.neg.bedGraph \
+        | awk -F '\t' {'print \$1"\t"\$2"\t"\$3"\t"(\$4+\$5)'} \
+        > ${name}.neg.bedGraph
+
+    cat ${name}.pos.bedGraph \
+        ${name}.neg.bedGraph \
+        > ${name}.unsorted.bedGraph
+
+    sortBed \
+        -i ${name}.unsorted.bedGraph \
+        > ${name}.bedGraph
+
+    python ${params.rcc} \
+        ${name}.bedGraph \
+        ${millions_mapped} \
+        ${name}.rcc.bedGraph
+
+    python ${params.rcc} \
+        ${name}.pos.bedGraph \
+        ${millions_mapped} \
+        ${name}.unsorted.pos.rcc.bedGraph
+    sortBed -i ${name}.unsorted.pos.rcc.bedGraph > ${name}.pos.rcc.bedGraph
+
+    python ${params.rcc} \
+        ${name}.neg.bedGraph \
+        ${millions_mapped} \
+        ${name}.unsorted.neg.rcc.bedGraph
+    sortBed -i ${name}.unsorted.neg.rcc.bedGraph > ${name}.neg.rcc.bedGraph
+    """
+    } else {
+    """
+    samtools view \
+        -h -b -f 0x0040 \
+        ${bam_file} \
+        > ${name}.rev_read.bam
+
+    samtools view \
+        -h -b -f 0x0080 \
+        ${bam_file} \
+        > ${name}.fw_read.bam
+
     genomeCoverageBed \
         -bg \
         -split \
