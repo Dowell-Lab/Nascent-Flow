@@ -1,0 +1,16 @@
+As of January 2024, the DnA lab pipelines are set up as follows:
+
+If the data is single end:
+  -Forward-stranded libraries are mapped by default and have no parameters given
+  -Reverse-stranded libraries are mapped using the --flip option, in which BBDuk reverse-complements the sequence during the trimming step
+  -Either way, these libraries are mapped as unstranded with HISAT2
+  -This method has merit: HISAT2 doesn't reverse complement, so using the --rna-strandedness option in HISAT2 does map to the correct strand, but it doesn't show up correctly on IGV and might not work correctly for some other downstream applications - reverse complementing takes care of all of that.
+
+If the data is paired end:
+  -Reverse-stranded libraries are mapped by default and don't need any parameters, but can be given --reverseStranded
+  -Forward-stranded libraries are mapped with the --forwardStranded option
+  -These parameters are used to set the strandedness for HISAT2 and don't affect BBDuk at all
+  -If --flip or --flipR2 are specified with PE data, reads will not be mapped in the correct orientation relative to one another
+  -Strandedness must be tracked correctly for downstream applications
+
+Reverse-stranded libraries have R1 being the same strand as the original RNA, and thus the opposite strand to the transcribed DNA sequence. Forward-stranded libraries are the opposite, with R1 being the same as the transcribed DNA sequence.

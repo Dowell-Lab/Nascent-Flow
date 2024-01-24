@@ -148,4 +148,4 @@ The best way to run Nextflow is using an sbatch script using the same command sp
 * Ignacio Tripodi ([@ignaciot](https://github.com/ignaciot)): Nextflow base code and structure, pipeline implementation
 * Margaret Gruca ([@magruca](https://github.com/magruca)): Nextflow pipeline optimization, original pipeline design and optimization
 * Zach Maas ([@zmaas](https://github.com/zmaas)): Testing and adding a FastQC parser
-* Lynn Sanford([@lynn-sanford])(https://github.com/lynn-sanford)): Pipeline maintenance and optimization
+* Lynn Sanford([@lynn-sanford](https://github.com/lynn-sanford)): Pipeline maintenance and optimization
